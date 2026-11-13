@@ -1,0 +1,6 @@
+node_modules
+
+# ---- secrets & private data (never push) ----
+.env
+.env.*
+!.env.example
