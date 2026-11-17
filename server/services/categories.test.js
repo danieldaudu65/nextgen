@@ -53,6 +53,6 @@ test('a story joins its section category (and extra sections / matching labels)'
 test('slugify handles accents and symbols', () => assert.equal(slugify('Épée & Fun!'), 'epee-and-fun'));
 
 test('homepage hero settings: defaults and limits', () => {
-    assert.deepEqual(mergeSettings({}).home, { heroMax: 5, heroSeconds: 7 });
-    assert.deepEqual(mergeSettings({ home: { heroMax: 99, heroSeconds: 1 } }).home, { heroMax: 10, heroSeconds: 3 });
+    assert.deepEqual(mergeSettings({}).home, { heroMax: 5, heroSeconds: 7, bigNews: ['', '', ''], fresh: ['', '', ''] });
+    assert.deepEqual(mergeSettings({ home: { heroMax: 99, heroSeconds: 1 } }).home, { heroMax: 10, heroSeconds: 3, bigNews: ['', '', ''], fresh: ['', '', ''] });
 });

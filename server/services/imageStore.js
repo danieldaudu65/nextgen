@@ -8,7 +8,11 @@ const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
 
-const imageUpload = (maxMb = 5) => multer({
+// Biggest picture the server accepts, in MB (UPLOAD_MAX_MB in .env to change it; default 20).
+// The admin page also shrinks very big photos before sending them, so most uploads are far smaller.
+const MAX_MB = Math.max(1, Number(process.env.UPLOAD_MAX_MB) || 20);
+
+const imageUpload = (maxMb = MAX_MB) => multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: maxMb * 1024 * 1024 },
     fileFilter: (req, file, cb) => cb(null, /^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)),
@@ -42,4 +46,4 @@ async function saveImage(file, req, folder = 'nextgen') {
     return result.secure_url;
 }
 
-module.exports = { imageUpload, cloudinaryReady, saveImage };
+module.exports = { MAX_MB, imageUpload, cloudinaryReady, saveImage };

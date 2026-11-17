@@ -242,7 +242,7 @@ router.put('/profile', async (req, res) => {
     } catch (error) { return fail(res, error, 'profile'); }
 });
 
-const logoUpload = imageUpload(3);
+const logoUpload = imageUpload(10);
 router.post('/logo', logoUpload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'Choose a JPG, PNG or WEBP under 3 MB' });

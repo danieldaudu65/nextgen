@@ -52,7 +52,7 @@ router.post('/', rateLimit({ max: 5, windowMs: 3600e3, message: 'You have sent a
     }
 });
 
-const upload = imageUpload(3);
+const upload = imageUpload(10);
 router.post('/photo', rateLimit({ max: 10, windowMs: 3600e3 }), upload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'Choose a JPG, PNG or WEBP under 3 MB' });

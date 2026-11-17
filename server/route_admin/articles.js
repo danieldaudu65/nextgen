@@ -3,14 +3,16 @@ const mongoose = require('mongoose');
 const article = require('../models/article');
 const edition = require('../models/edition');
 const { requireAdmin, requireRole, hasRole } = require('../middleware/adminAuth');
-const { getSettings } = require('../services/settings');
+const { getSettings, saveSettings } = require('../services/settings');
+const { listCategories, articleFilter } = require('../services/categories');
 const { formatStory } = require('../services/storyFormatter');
+const { storyFromPages, PALETTE } = require('../services/pageReader');
 const { validQuestion } = require('../services/readCheck');
 const router = express.Router();
 
 // Fields an admin may set (anything else in the body is ignored)
 const EDITABLE = ['slug', 'edition', 'section', 'sectionLabel', 'pages', 'title', 'dek', 'image', 'imagePosition', 'imageFit',
-    'gallery', 'homepageFeatured', 'author', 'readMins', 'points', 'body', 'eli10', 'game', 'tags', 'reviewNote', 'question'];
+    'gallery', 'homepageFeatured', 'author', 'readMins', 'points', 'body', 'eli10', 'game', 'tags', 'reviewNote', 'question', 'accent'];
 
 const slugify = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 80);
@@ -19,6 +21,8 @@ const pick = (body) => {
     const data = {};
     EDITABLE.forEach((k) => { if (body[k] !== undefined) data[k] = body[k]; });
     if (data.slug !== undefined) data.slug = slugify(data.slug);
+    // the story's colour: one of the site colours, or none (the normal NextGen yellow)
+    if (data.accent !== undefined) data.accent = PALETTE.includes(String(data.accent || '').toUpperCase()) ? String(data.accent).toUpperCase() : null;
     if (Array.isArray(data.body)) data.body = data.body.map(String).filter((b) => b.trim());
     if (Array.isArray(data.eli10)) data.eli10 = data.eli10.map(String).filter((b) => b.trim());
     if (Array.isArray(data.tags)) data.tags = data.tags.map((t) => String(t).trim()).filter(Boolean);
@@ -116,6 +120,84 @@ router.get('/homepage', requireAdmin, async (req, res) => {
     }
 });
 
+// ============================================================
+// THE BIG NEWS ON THE HOMEPAGE (Admin → Stories)
+// GET /admin_articles/big-news   → { slots: [slug|'' ×3], stories: published Big News stories, newest first }
+// PUT /admin_articles/big-news   { slots: [slug|'' ×3] }   (editors)
+// slots = the big card, top right, bottom right. '' = the newest Big News story not already used.
+// ============================================================
+async function bigNewsStories() {
+    const cat = (await listCategories()).find((c) => c.slug === 'big-news');
+    if (!cat) return [];
+    const list = await article.find({ status: 'published', ...articleFilter(cat) }, 'slug title image imagePosition imageFit sectionLabel pages publishedAt')
+        .sort({ publishedAt: -1 }).limit(60).lean();
+    return list.map(({ _id, ...a }) => ({ id: String(_id), ...a }));
+}
+
+router.get('/big-news', requireAdmin, async (req, res) => {
+    try {
+        const [{ home }, stories] = await Promise.all([getSettings(), bigNewsStories()]);
+        return res.status(200).json({ success: true, slots: home.bigNews, stories });
+    } catch (err) {
+        console.error('Big News line-up error:', err);
+        return res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+router.put('/big-news', requireAdmin, requireRole('editor'), async (req, res) => {
+    try {
+        const stories = await bigNewsStories();
+        const known = new Set(stories.map((a) => a.slug));
+        const asked = Array.isArray(req.body?.slots) ? req.body.slots : [];
+        const bad = asked.find((v) => v && !known.has(String(v)));
+        if (bad) return res.status(400).json({ success: false, message: 'Pick published Big News stories only.' });
+        const current = await getSettings();
+        const saved = await saveSettings({ ...current, home: { ...current.home, bigNews: asked } }, req.admin._id);
+        return res.status(200).json({ success: true, message: 'Big News line-up saved', slots: saved.home.bigNews });
+    } catch (err) {
+        console.error('Save Big News line-up error:', err);
+        return res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// ============================================================
+// FRESH STORIES ON THE HOMEPAGE (Admin → Stories)
+// GET /admin_articles/fresh   → { slots: [slug|'' ×3], stories: every published story, newest first }
+// PUT /admin_articles/fresh   { slots: [slug|'' ×3] }   (editors)
+// slots = the 1st, 2nd and 3rd card. '' = the newest published story not already used.
+// ============================================================
+async function freshStories() {
+    const list = await article.find({ status: 'published' }, 'slug title image imagePosition imageFit sectionLabel pages publishedAt')
+        .sort({ publishedAt: -1 }).limit(100).lean();
+    return list.map(({ _id, ...a }) => ({ id: String(_id), ...a }));
+}
+
+router.get('/fresh', requireAdmin, async (req, res) => {
+    try {
+        const [{ home }, stories] = await Promise.all([getSettings(), freshStories()]);
+        return res.status(200).json({ success: true, slots: home.fresh, stories });
+    } catch (err) {
+        console.error('Fresh stories line-up error:', err);
+        return res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+router.put('/fresh', requireAdmin, requireRole('editor'), async (req, res) => {
+    try {
+        const stories = await freshStories();
+        const known = new Set(stories.map((a) => a.slug));
+        const asked = Array.isArray(req.body?.slots) ? req.body.slots : [];
+        const bad = asked.find((v) => v && !known.has(String(v)));
+        if (bad) return res.status(400).json({ success: false, message: 'Pick published stories only.' });
+        const current = await getSettings();
+        const saved = await saveSettings({ ...current, home: { ...current.home, fresh: asked } }, req.admin._id);
+        return res.status(200).json({ success: true, message: 'Fresh stories line-up saved', slots: saved.home.fresh });
+    } catch (err) {
+        console.error('Save Fresh stories line-up error:', err);
+        return res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
 router.patch('/:id/homepage', requireAdmin, requireRole('editor'), async (req, res) => {
     try {
         if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ success: false, message: 'Article not found' });
@@ -156,6 +238,28 @@ router.post('/format', requireAdmin, async (req, res) => {
     } catch (err) {
         console.error('Format story error:', err.message);
         return res.status(err.status || 502).json({ success: false, message: err.message || 'Could not format the story' });
+    }
+});
+
+// ============================================================
+// READ PHOTOS OF A PRINTED ARTICLE
+// POST /admin_articles/read-pages   { pages: [{ data: base64, type: 'image/jpeg' }] (1–4, in order), edition? }
+// → { story (same shape as /format), source: 'ai', design: { accent, accentRaw, pictures: [{ photo, box, caption, role, name }] }, transcript }
+// The text is copied off the photos, then laid out by the same formatter as /format. Nothing is saved here;
+// the admin page cuts the pictures out of the photos itself (design.pictures) and uploads them.
+// ============================================================
+router.post('/read-pages', requireAdmin, async (req, res) => {
+    try {
+        const { pages, edition: editionSlug } = req.body || {};
+        const vol = editionSlug ? await edition.findOne({ slug: String(editionSlug) }, 'sections vocab').lean() : null;
+        const result = await storyFromPages(pages, {
+            sections: (vol?.sections || []).map((s) => ({ key: s.key, label: s.label })),
+            vocab: vol?.vocab || [],
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (err) {
+        console.error('Read pages error:', err.message);
+        return res.status(err.status || 502).json({ success: false, message: err.message || 'Could not read the photos' });
     }
 });
 

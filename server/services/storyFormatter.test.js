@@ -105,7 +105,7 @@ test('uses Groq (free tier) when GROQ_API_KEY is set, before Gemini', async () =
     assert.equal(r.story.sectionLabel, 'Rising Stars');
     assert.equal(seen.url, 'https://api.groq.com/openai/v1/chat/completions');
     assert.equal(seen.auth, 'Bearer gq');
-    assert.equal(seen.body.model, 'llama-3.3-70b-versatile');
+    assert.equal(seen.body.model, 'openai/gpt-oss-120b');
     assert.deepEqual(seen.body.response_format, { type: 'json_object' });
     assert.match(seen.body.messages[0].content, /ONE JSON object/);
 });
@@ -114,12 +114,12 @@ test('Groq: falls back to another free model when one is unavailable', async () 
     const tried = [];
     const fakeFetch = async (url, opts) => {
         const { model } = JSON.parse(opts.body); tried.push(model);
-        if (model === 'llama-3.3-70b-versatile') return { ok: false, status: 404, json: async () => ({ error: { message: 'The model does not exist or you do not have access to it.', code: 'model_not_found' } }) };
+        if (model === 'openai/gpt-oss-120b') return { ok: false, status: 404, json: async () => ({ error: { message: 'The model does not exist or you do not have access to it.', code: 'model_not_found' } }) };
         return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ title: 'T', dek: 'D', body: ['Hello there.'], eli10: ['Hi.'] }) } }] }) };
     };
     const r = await formatStory('Ishaq asked: what if electric cars could be cheaper for ordinary people? He designed one.', { env: { GROQ_API_KEY: 'k' }, fetchImpl: fakeFetch });
     assert.equal(r.source, 'ai');
-    assert.deepEqual(tried.slice(0, 2), ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b']);
+    assert.deepEqual(tried.slice(0, 2), ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b']);
 });
 
 test('Groq: bad key stops at once with a clear message, and shows the real error otherwise', async () => {
@@ -128,7 +128,7 @@ test('Groq: bad key stops at once with a clear message, and shows the real error
     await assert.rejects(formatStory('Ishaq asked: what if electric cars could be cheaper for ordinary people? He designed one.', { env: { GROQ_API_KEY: '"k"' }, fetchImpl: bad }), /did not accept the key/);
     assert.equal(calls, 1);
     const other = async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'json_validate_failed' } }) });
-    await assert.rejects(formatStory('Ishaq asked: what if electric cars could be cheaper for ordinary people? He designed one.', { env: { GROQ_API_KEY: 'k' }, fetchImpl: other }), /Groq \(llama-3.3-70b-versatile\) said: json_validate_failed/);
+    await assert.rejects(formatStory('Ishaq asked: what if electric cars could be cheaper for ordinary people? He designed one.', { env: { GROQ_API_KEY: 'k' }, fetchImpl: other }), /Groq gave a broken reply this time/);
 });
 
 test('a too-short AI story gets a second pass to reach the house length', async () => {
@@ -179,3 +179,71 @@ test('formatted stories carry the arcade game button and points like the others'
     assert.deepEqual(r.story.game, { label: 'Play in the NextGen Arcade', href: '/#arcade' });
     assert.equal(r.story.points, 10);
 });
+
+// ---------- Groq: broken JSON replies and the free-plan limits ----------
+{
+    const { formatStory: fmt, groqPlan, salvageJson } = require('./storyFormatter');
+    const good = { title: 'Tolu Tracked Every Naira', dek: 'Where did ₦10K go?', section: '', tags: [], body: ['Tolu, 15, tracked every naira.'], eli10: ['a', 'b', 'c', 'd'], vocab: [], notes: '' };
+    const groqFake = (answers, seen) => async (url, init) => {
+        const body = JSON.parse(init.body);
+        seen.push({ model: body.model, body });
+        const a = answers.shift() || { ok: true };
+        if (a.ok) return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(good) } }] }) };
+        return { ok: false, status: a.status || 400, json: async () => ({ error: { message: a.msg || "Failed to generate JSON. Please adjust your prompt. See 'failed_generation' for more details.", code: a.code || 'json_validate_failed', failed_generation: a.partial } }) };
+    };
+    const text = 'Tolu, 15, had ₦10,000 on Monday and ₦650 by Friday. She tracked every naira for a week and found snacks took the most.';
+
+    test('Groq broken JSON: tries the same model once more, then the next model', async () => {
+        const seen = [];
+        const r = await fmt(text, { env: { GROQ_API_KEY: 'g' }, fetchImpl: groqFake([{ ok: false }, { ok: false }, { ok: true }], seen) });
+        assert.equal(r.story.title, 'Tolu Tracked Every Naira');
+        assert.deepEqual(seen.slice(0, 3).map((x) => x.model), ['openai/gpt-oss-120b', 'openai/gpt-oss-120b', 'qwen/qwen3.6-27b']);
+    });
+
+    test('Groq broken JSON that is still readable is used as it is', async () => {
+        const seen = [];
+        const r = await fmt(text, { env: { GROQ_API_KEY: 'g' }, fetchImpl: groqFake([{ ok: false, partial: '```json\n' + JSON.stringify(good) + '\n```' }], seen) });
+        assert.equal(r.story.title, 'Tolu Tracked Every Naira');
+        assert.equal(seen[0].model, 'openai/gpt-oss-120b');
+    });
+
+    test('Groq keeps failing: a plain message, not Groq\'s raw text', async () => {
+        await assert.rejects(
+            fmt(text, { env: { GROQ_API_KEY: 'g' }, fetchImpl: groqFake(Array.from({ length: 12 }, () => ({ ok: false })), []) }),
+            (e) => /broken reply this time\. Press the button again/.test(e.message) && !/failed_generation/.test(e.message),
+        );
+    });
+
+    test('Groq requests fit each free model: no example on small limits, short thinking on gpt-oss', () => {
+        const user = 'x'.repeat(5000);
+        const oss = groqPlan('openai/gpt-oss-120b', user);
+        assert.doesNotMatch(oss.system, /EXAMPLE of the house style/);
+        assert.equal(oss.limits.reasoning_effort, 'low');
+        // the prompt plus the reply room stays inside the 8,000 tokens a minute
+        assert.ok(Math.ceil((oss.system + user).length / 3.3) + oss.limits.max_completion_tokens <= 8000);
+        const qwen = groqPlan('qwen/qwen3.6-27b', user);
+        assert.ok(qwen.limits.max_completion_tokens && !qwen.limits.reasoning_effort);
+        // a model with a big limit gets the example
+        assert.match(groqPlan('some/new-model', user, 20000).system, /EXAMPLE of the house style/);
+    });
+
+    test('Groq "Request too large … Limit 6000": asks the same model again inside that limit', async () => {
+        const seen = [];
+        const tooBig = { ok: false, status: 413, code: 'rate_limit_exceeded', msg: 'Request too large for model `openai/gpt-oss-120b` in organization `x` service tier `on_demand` on tokens per minute (TPM): Limit 6000, Requested 9100, please reduce your message size and try again.' };
+        const r = await fmt(text, { env: { GROQ_API_KEY: 'g' }, fetchImpl: groqFake([tooBig, { ok: true }], seen) });
+        assert.equal(r.source, 'ai');
+        assert.deepEqual(seen.slice(0, 2).map((x) => x.model), ['openai/gpt-oss-120b', 'openai/gpt-oss-120b']);
+        assert.ok(seen[1].body.max_completion_tokens < seen[0].body.max_completion_tokens);
+    });
+
+    test('Groq: every model retired → says which setting to change', async () => {
+        const gone = Array.from({ length: 10 }, () => ({ ok: false, status: 404, code: 'model_not_found', msg: 'The model `x` does not exist or you do not have access to it.' }));
+        await assert.rejects(fmt(text, { env: { GROQ_API_KEY: 'g' }, fetchImpl: groqFake(gone, []) }), /Set GROQ_MODEL in server\/\.env/);
+    });
+
+    test('salvageJson reads JSON in fences or with text around it', () => {
+        assert.deepEqual(salvageJson('Here you go: {"a": 1} thanks'), { a: 1 });
+        assert.equal(salvageJson('{"a": 1'), null);
+        assert.equal(salvageJson(undefined), null);
+    });
+}

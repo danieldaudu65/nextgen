@@ -21,6 +21,8 @@ const articleSchema = new mongoose.Schema({
     imagePosition:              { type: String, default: null },
     // How the main picture sits in boxes of other shapes: auto (decide by shape), cover (fill), contain (whole picture)
     imageFit:                   { type: String, enum: ['auto', 'cover', 'contain'], default: 'auto' },
+    // The story's colour (callouts, bullets, highlights) from the printed page; null = the normal NextGen yellow
+    accent:                     { type: String, default: null },
     gallery:                    [{ _id: false, image: { type: String, required: true }, caption: { type: String, default: '' } }],
     homepageFeatured:           { type: Boolean, default: false, index: true },
     homepageAt:                 { type: Date, default: null },                               // when it was put in the homepage hero (newest first)

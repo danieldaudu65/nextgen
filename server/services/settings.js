@@ -26,6 +26,12 @@ const DEFAULTS = Object.freeze({
     home: {
         heroMax: 5,               // how many "Show in the homepage hero" stories rotate at the top
         heroSeconds: 7,           // seconds each story stays before the next one slides in
+        // The Big News section: the story (slug) for the big card, top right and bottom right.
+        // '' = that spot shows the newest Big News story not already used.
+        bigNews: ['', '', ''],
+        // "Fresh stories" on the homepage: the story (slug) for the 1st, 2nd and 3rd card.
+        // '' = that card shows the newest published story not already used.
+        fresh: ['', '', ''],
     },
     access: {
         // Games, quizzes, debates and points only for students with access:
@@ -63,6 +69,17 @@ function cleanPlans(list, { seats }) {
         }));
 }
 
+// Story spots (slugs): exactly `n`, each a slug or '' (automatic), no story twice
+function cleanSlots(list, n) {
+    const seen = new Set();
+    return Array.from({ length: n }, (_, i) => {
+        const v = Array.isArray(list) ? String(list[i] ?? '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 120) : '';
+        if (!v || seen.has(v)) return '';
+        seen.add(v);
+        return v;
+    });
+}
+
 // Pure: saved (possibly partial / messy) settings → complete, valid settings
 function mergeSettings(saved = {}) {
     const D = DEFAULTS;
@@ -94,6 +111,8 @@ function mergeSettings(saved = {}) {
         home: {
             heroMax: num(hm.heroMax, 1, 10, D.home.heroMax),
             heroSeconds: num(hm.heroSeconds, 3, 30, D.home.heroSeconds),
+            bigNews: cleanSlots(hm.bigNews, 3),
+            fresh: cleanSlots(hm.fresh, 3),
         },
         access: {
             requireAccessForPoints: bool(ac.requireAccessForPoints, D.access.requireAccessForPoints),

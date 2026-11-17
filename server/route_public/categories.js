@@ -3,7 +3,7 @@ const article = require('../models/article');
 const { listCategories, publicCategory, articleFilter, slugify } = require('../services/categories');
 const router = express.Router();
 
-const CARD_FIELDS = 'slug edition section sectionLabel pages title dek image imagePosition imageFit readMins points publishedAt';
+const CARD_FIELDS = 'slug edition section sectionLabel pages title dek image imagePosition imageFit readMins points publishedAt author';
 
 // ============================================================
 // PUBLIC CATEGORIES

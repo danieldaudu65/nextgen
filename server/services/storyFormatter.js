@@ -255,7 +255,9 @@ async function askClaude(text, { sections, vocab, apiKey, model, extra = '', fet
 
 // ---------- Groq (free tier, no card: console.groq.com/keys) ----------
 const MIN_WORDS = 380;
-const GROQ_DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+// Groq retired the Llama models in 2026 (llama-3.3-70b and llama-3.1-8b on 16 Aug 2026); these are its current free ones.
+// If Groq retires these too, set GROQ_MODEL in .env to a model from console.groq.com/docs/models.
+const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
 // Groq uses the OpenAI chat format. JSON mode guarantees valid JSON; the shape is described in the prompt.
 const GROQ_SHAPE = [
     'Reply with ONE JSON object only, no other text, in exactly this shape:',
@@ -266,7 +268,25 @@ const GROQ_SHAPE = [
 ].join('\n');
 
 // Free models to try, in order, when one can't be used (retired, blocked for the account, over its limit)
-const GROQ_FALLBACKS = ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant'];
+const GROQ_FALLBACKS = ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b', 'openai/gpt-oss-20b'];
+
+// Groq's free plan limits tokens per minute for each model, and it counts the reply room asked for.
+// Models with a big limit get the full prompt with the example; the others get the rules without the example
+// so there is room left for the reply. gpt-oss and Qwen think before answering (the thinking counts too),
+// so they get as much reply room as the limit allows (gpt-oss also short thinking), or the JSON gets cut off.
+// When Groq answers "Request too large … Limit N", the same model is asked again inside that limit.
+const GROQ_TPM = { 'openai/gpt-oss-120b': 8000, 'openai/gpt-oss-20b': 8000, 'qwen/qwen3.6-27b': 6000 };
+const tokensIn = (str) => Math.ceil(str.length / 3.3);
+function groqPlan(model, user, tpmOverride) {
+    const tpm = tpmOverride || GROQ_TPM[model] || 8000;
+    const full = `${SYSTEM_WITH_EXAMPLE}\n\n${GROQ_SHAPE}`;
+    const short = `${SYSTEM}\n\n${GROQ_SHAPE}`;
+    const system = tpm >= 12000 ? full : short;
+    const thinks = /gpt-oss|qwen/.test(model);
+    const room = Math.max(1200, Math.min(thinks ? 6500 : 4000, tpm - tokensIn(system + user) - 300));
+    const limits = /gpt-oss/.test(model) ? { max_completion_tokens: room, reasoning_effort: 'low' } : thinks ? { max_completion_tokens: room } : { max_tokens: room };
+    return { system, user, limits };
+}
 
 function groqError(status, data, model) {
     const raw = data?.error?.message || `status ${status}`;
@@ -275,16 +295,26 @@ function groqError(status, data, model) {
     if (status === 401 || code === 'invalid_api_key') msg = 'Groq did not accept the key. Copy GROQ_API_KEY again from console.groq.com/keys (no quotes or spaces) and restart the server.';
     else if (status === 429 || code === 'rate_limit_exceeded') msg = 'The free Groq limit is used up for now. Wait a minute and try again (shorter articles use less).';
     else if (status === 413) msg = 'That article is too long for the free Groq limit. Paste it in two parts.';
+    else if (status === 404 || code === 'model_not_found' || /does not exist/i.test(raw)) msg = `Groq no longer has the model ${model}. Set GROQ_MODEL in server/.env to a current model from console.groq.com/docs/models and restart the server.`;
+    else if (code === 'json_validate_failed' || /failed to generate json|json_validate_failed/i.test(raw)) msg = 'Groq gave a broken reply this time. Press the button again; it usually works on the second try.';
     else msg = `Groq (${model}) said: ${raw}`;
     const e = new Error(msg);
     e.status = status === 429 ? 429 : status === 413 ? 400 : 502;
     // can another model help?
     e.tryNext = status === 404 || status === 403 || status === 429 || status === 413 || /model/i.test(code) || /model/i.test(raw);
+    e.missing = status === 404 || code === 'model_not_found' || /does not exist/i.test(raw);
+    // "Request too large … tokens per minute (TPM): Limit 8000, Requested 9500" → the model's real limit
+    const lim = raw.match(/tokens per minute[^:]*:\s*Limit\s+(\d+)/i);
+    if (lim && (status === 413 || status === 429) && /request too large|reduce your message/i.test(raw)) e.tpm = Number(lim[1]);
+    // a broken JSON reply: worth one more try on the same model, then the next model
+    e.brokenJson = code === 'json_validate_failed' || /failed to generate json|json_validate_failed/i.test(raw);
+    if (e.brokenJson) e.tryNext = true;
     if (status === 401) e.tryNext = false;
     return e;
 }
 
-async function askGroqOnce(text, { sections, vocab, apiKey, model, extra = '', fetchImpl = fetch, timeoutMs = 90000 }) {
+async function askGroqOnce(text, { sections, vocab, apiKey, model, extra = '', fetchImpl = fetch, timeoutMs = 90000, tpm }) {
+    const plan = groqPlan(model, buildPrompt(text, sections, vocab, extra), tpm);
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -295,17 +325,20 @@ async function askGroqOnce(text, { sections, vocab, apiKey, model, extra = '', f
             body: JSON.stringify({
                 model,
                 temperature: 0.4,
-                max_tokens: 3500,
+                ...plan.limits,
                 response_format: { type: 'json_object' },
                 messages: [
-                    { role: 'system', content: `${SYSTEM_WITH_EXAMPLE}\n\n${GROQ_SHAPE}` },
-                    { role: 'user', content: buildPrompt(text, sections, vocab, extra) },
+                    { role: 'system', content: plan.system },
+                    { role: 'user', content: plan.user },
                 ],
             }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            console.warn(`[storyFormatter] Groq ${model} → ${res.status}:`, JSON.stringify(data?.error || data));
+            // Groq sends back what it wrote when the JSON check failed; often it is usable
+            const salvaged = salvageJson(data?.error?.failed_generation);
+            if (salvaged) return salvaged;
+            console.warn(`[storyFormatter] Groq ${model} → ${res.status}:`, JSON.stringify(data?.error || data).slice(0, 400));
             throw groqError(res.status, data, model);
         }
         const out = data.choices?.[0]?.message?.content || '';
@@ -323,15 +356,35 @@ async function askGroqOnce(text, { sections, vocab, apiKey, model, extra = '', f
 async function askGroq(text, opts) {
     const models = [...new Set([opts.model, ...GROQ_FALLBACKS].filter(Boolean))];
     let last;
+    let tpm;
     for (const model of models) {
-        try {
-            return await askGroqOnce(text, { ...opts, model });
-        } catch (err) {
-            last = err;
-            if (!err.tryNext) throw err;
+        tpm = undefined;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                return await askGroqOnce(text, { ...opts, model, tpm });
+            } catch (err) {
+                // keep the most useful error: "model retired" only when nothing better happened
+                if (!last || last.missing || !err.missing) last = err;
+                if (!err.tryNext) throw err;
+                if (err.tpm && attempt === 0) { tpm = err.tpm; continue; } // ask again inside the model's real limit
+                if (!(err.brokenJson && attempt === 0)) break; // only a broken reply is worth a second try on the same model
+            }
         }
     }
     throw last;
+}
+
+// Text that should be one JSON object (maybe in ``` fences, maybe with text around it) → the object, or null
+function salvageJson(text) {
+    if (typeof text !== 'string' || !text.trim()) return null;
+    const t = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
+    for (const candidate of [t, t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)]) {
+        try {
+            const v = JSON.parse(candidate);
+            if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+        } catch { /* try the next */ }
+    }
+    return null;
 }
 
 // ---------- Google Gemini (has a free tier: aistudio.google.com/apikey) ----------
@@ -349,7 +402,7 @@ function toGeminiSchema(node) {
     return out;
 }
 
-async function askGemini(text, { sections, vocab, apiKey, model, extra = '', fetchImpl = fetch, timeoutMs = 90000 }) {
+async function askGeminiOnce(text, { sections, vocab, apiKey, model, extra = '', fetchImpl = fetch, timeoutMs = 90000 }) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -376,6 +429,11 @@ async function askGemini(text, { sections, vocab, apiKey, model, extra = '', fet
                 ? 'The free AI limit is used up for now. Wait a minute (or until tomorrow) and try again.'
                 : `The AI service said: ${msg}`);
             e.status = res.status === 429 ? 429 : 502;
+            // busy (503), over the limit (429) or a retired model (404): another Gemini model may still work
+            e.busy = res.status === 503 || /high demand|overloaded/i.test(msg);
+            e.missing = res.status === 404 || /no longer available|not found|is not supported|does not exist/i.test(msg);
+            e.tryNext = e.busy || e.missing || res.status === 429;
+            if (e.busy) e.message = GEMINI_BUSY;
             throw e;
         }
         const out = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
@@ -390,21 +448,61 @@ async function askGemini(text, { sections, vocab, apiKey, model, extra = '', fet
     }
 }
 
+// Google's free models, best first. When one is busy ("high demand") or over its limit, the next one is tried.
+// (Google closed the 2.5 models to new users in 2026; the "-latest" names always point at Google's current free model)
+const GEMINI_FALLBACKS = ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
+const GEMINI_BUSY = "Google's free AI is very busy right now. Wait a minute and try again.";
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Try each Gemini model in turn (env model first); a busy one gets one more try after a short wait */
+async function geminiWithFallback(callOnce, model, { waitMs = 2500 } = {}) {
+    const models = [...new Set([model, ...GEMINI_FALLBACKS].filter(Boolean))];
+    let last;
+    for (const m of models) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                return await callOnce(m);
+            } catch (err) {
+                // keep the most useful error: "model closed / not found" only when nothing better happened
+                if (!last || last.missing || !err.missing) last = err;
+                if (!err.tryNext) throw err;
+                if (!(err.busy && attempt === 0)) break; // only a busy model is worth a second try
+                await pause(waitMs);
+            }
+        }
+    }
+    throw last;
+}
+
+async function askGemini(text, opts) {
+    return geminiWithFallback((model) => askGeminiOnce(text, { ...opts, model }), opts.model, opts);
+}
+
 /**
  * Format pasted text. Falls back to the simple formatter when no API key is set.
  * Throws for empty or overlong input, and when the AI call fails.
  */
-async function formatStory(text, { sections = [], vocab = [], env = process.env, fetchImpl } = {}) {
+async function formatStory(text, { sections = [], vocab = [], env = process.env, fetchImpl, extraRules = '', timeoutMs } = {}) {
     const source = String(text || '').trim();
     if (source.length < 40) { const e = new Error('Paste the full article (at least a few sentences).'); e.status = 400; throw e; }
     if (source.length > MAX_INPUT) { const e = new Error(`That is too long. Paste up to ${MAX_INPUT.toLocaleString()} characters at a time.`); e.status = 400; throw e; }
 
     // Claude first if its key is set, then Groq (free), then Gemini (free), otherwise the basic split
-    let ask;
-    if (env.ANTHROPIC_API_KEY) ask = (extra) => askClaude(source, { sections, vocab, apiKey: env.ANTHROPIC_API_KEY, model: env.ANTHROPIC_MODEL || DEFAULT_MODEL, extra, fetchImpl });
-    else if (env.GROQ_API_KEY) ask = (extra) => askGroq(source, { sections, vocab, apiKey: env.GROQ_API_KEY, model: env.GROQ_MODEL || GROQ_DEFAULT_MODEL, extra, fetchImpl });
-    else if (env.GEMINI_API_KEY) ask = (extra) => askGemini(source, { sections, vocab, apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL || GEMINI_DEFAULT_MODEL, extra, fetchImpl });
+    // extraRules: more instructions for this kind of source (for example text copied from photos, see pageReader.js)
+    let askAI;
+    if (env.ANTHROPIC_API_KEY) askAI = (extra) => askClaude(source, { sections, vocab, timeoutMs, apiKey: env.ANTHROPIC_API_KEY, model: env.ANTHROPIC_MODEL || DEFAULT_MODEL, extra, fetchImpl });
+    else if (env.GROQ_API_KEY) askAI = (extra) => askGroq(source, { sections, vocab, timeoutMs, apiKey: env.GROQ_API_KEY, model: env.GROQ_MODEL || GROQ_DEFAULT_MODEL, extra, fetchImpl });
+    else if (env.GEMINI_API_KEY) askAI = (extra) => askGemini(source, { sections, vocab, timeoutMs, apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL || GEMINI_DEFAULT_MODEL, extra, fetchImpl });
     else return { story: { ...basicFormat(source) }, source: 'basic' };
+    const ask = async (extra) => {
+        try {
+            return await askAI([extraRules, extra].filter(Boolean).join('\n\n'));
+        } catch (err) {
+            // a timed-out call only says "This operation was aborted"
+            if (err?.name === 'AbortError' || /aborted/i.test(String(err?.message))) { const e = new Error('The AI took too long to write the story. Try again.'); e.status = 504; throw e; }
+            throw err;
+        }
+    };
 
     const vault = vocab.map((v) => v.word);
     let raw = await ask('');
@@ -424,4 +522,4 @@ async function formatStory(text, { sections = [], vocab = [], env = process.env,
     return { story, source: 'ai' };
 }
 
-module.exports = { formatStory, basicFormat, cleanStory, normaliseBlocks, markVocab, styleGaps, toGeminiSchema, SYSTEM, TOOL };
+module.exports = { formatStory, salvageJson, groqPlan, basicFormat, cleanStory, normaliseBlocks, markVocab, styleGaps, toGeminiSchema, geminiWithFallback, GEMINI_BUSY, SYSTEM, TOOL };

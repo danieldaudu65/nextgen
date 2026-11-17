@@ -16,6 +16,7 @@ const POINTS = {
     DEBATE_VOTE: 20,       // once per debate
     STREAK_BONUS_3: 15,    // reaching a 3-day streak
     STREAK_BONUS_7: 50,    // reaching a 7-day streak
+    WORLD_BOSS: 100,       // beating the Boss on an edition's island (NextGen World), once per edition
 };
 
 // Points for finishing each mini-game (once per game per edition)

@@ -26,7 +26,7 @@ const port = process.env.PORT || 5000;
 const { allowedOrigins } = require('./config/origins');
 
 // rawBody: the Paystack webhook checks its signature against the exact bytes
-app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
+app.use(express.json({ limit: '10mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({ origin: allowedOrigins, credentials: true })); // credentials = send the login cookie
 app.use(cookieParser());
@@ -62,6 +62,7 @@ app.use('/user_reading', require('./route_user/reading'));
 app.use('/user_games', require('./route_user/games'));
 app.use('/user_quiz', require('./route_user/quiz'));
 app.use('/user_debate', require('./route_user/debate'));
+app.use('/user_world', require('./route_user/world'));   // NextGen World: stars per level + the Boss
 app.use('/user_pay', require('./route_user/pay'));
 
 // Schools (school dashboard)
@@ -93,6 +94,22 @@ app.get('/health', (req, res) => {
         db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
         uptime: Math.round(process.uptime()),
     });
+});
+
+// ===============================
+// Errors: always answer JSON (never an HTML page with file paths)
+// ===============================
+app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    if (err && err.name === 'MulterError') {
+        const message = err.code === 'LIMIT_FILE_SIZE'
+            ? 'That picture is too big. Use a smaller one (or a screenshot of it) and try again.'
+            : 'That upload did not work. Try another picture.';
+        return res.status(err.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ success: false, message });
+    }
+    if (err && err.type === 'entity.too.large') return res.status(413).json({ success: false, message: 'That is too much text to send at once.' });
+    console.error('Unhandled error:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
 });
 
 // ===============================
