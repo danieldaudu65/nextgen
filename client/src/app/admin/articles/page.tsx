@@ -7,6 +7,7 @@ import { adminApi, can, type AdminArticleRow, type AdminEditionRow } from '@/lib
 import { ApiError } from '@/lib/api';
 import { useAdmin } from '@/components/admin/AdminShell';
 import HeroLineup, { type HeroData } from '@/components/admin/HeroLineup';
+import BigNewsLineup from '@/components/admin/BigNewsLineup';
 import StatusBadge from '@/components/admin/StatusBadge';
 import AnimatedSelect from '@/components/AnimatedSelect';
 import AdminIcon from '@/components/admin/AdminIcon';
@@ -77,6 +78,8 @@ function AdminArticles() {
       </header>
 
       <HeroLineup data={hero} editor={editor} onChange={() => setTick((t) => t + 1)} toast={toast} />
+      <BigNewsLineup editor={editor} toast={toast} refresh={tick} />
+      <BigNewsLineup kind="fresh" editor={editor} toast={toast} refresh={tick} />
 
       <div className="admin-toolbar">
         <div className="admin-tabs" role="tablist">

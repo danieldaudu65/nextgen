@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NextGen homepage · Tap in. Level up. (mockup)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@600;700&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--ink:#0A0A0A;--yellow:#FFD400;--ember:#C2410C;--fg:#0A0A0A;--bg:#fff;--surface:#fff;--surface2:#F7F7F5;--border:#E2E0D9;--muted:#6B6862;--kicker:#C2410C;--head:#0A0A0A;
+  --star-head:1px 0 0 var(--ink),-1px 0 0 var(--ink),0 1px 0 var(--ink),0 -1px 0 var(--ink),-3px 3px 0 var(--yellow)}
+html.dark{--fg:#F7F7F5;--bg:#1A1A18;--surface:#2A2926;--surface2:#4A4843;--border:#2A2926;--muted:#A8A49B;--kicker:#FFD400;--head:#fff}
+body{font-family:Inter,system-ui,sans-serif;background:#d9d6cf;color:var(--fg)}
+button{font-family:inherit;cursor:pointer;border:0}
+a{color:inherit;text-decoration:none}
+
+/* ---------- mockup controls (not part of the site) ---------- */
+.mock-bar{position:sticky;top:0;z-index:100;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;padding:10px;background:#111;color:#fff;font-size:13px;font-weight:700}
+.mock-bar span{opacity:.6;margin-right:4px}
+.seg{display:inline-flex;background:#2A2926;border-radius:999px;padding:3px}
+.seg button{background:none;color:#fff;padding:7px 14px;border-radius:999px;font-weight:700;font-size:13px}
+.seg button.on{background:#FFD400;color:#0A0A0A}
+
+/* ---------- the page frame (laptop or phone) ---------- */
+.frame{margin:22px auto 60px;background:var(--bg);container-type:inline-size;overflow:hidden;transition:max-width .4s ease;max-width:1360px;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.25)}
+.frame.phone{max-width:390px;border-radius:36px;border:10px solid #111}
+.wrap{max-width:1760px;margin:0 auto;padding-inline:clamp(20px,5cqi,80px)}
+
+/* site header, like punchnextgen.com */
+nav{background:rgba(26,26,24,.96);color:#fff;border-bottom:1px solid rgba(255,255,255,.08)}
+.nav-in{display:flex;align-items:center;gap:22px;height:68px}
+.logo{display:flex;align-items:center;gap:8px;font-family:'Josefin Sans',sans-serif;font-weight:700;font-size:22px}
+.logo i{font-style:normal;background:#E3473B;color:#fff;font-size:11px;padding:3px 6px;border-radius:4px;letter-spacing:.06em}
+.logo b{color:#FFD400}
+.links{display:flex;gap:22px;font-family:'Josefin Sans',sans-serif;font-weight:700;font-size:15px;color:rgba(255,255,255,.88);margin-left:14px}
+.links .on{color:#FFD400}
+.nav-r{margin-left:auto;display:flex;gap:10px;align-items:center}
+.pts{display:flex;gap:6px;align-items:center;border:1.5px solid rgba(255,255,255,.25);border-radius:999px;padding:6px 12px;font-weight:800;font-size:14px}
+.pts b{color:#FFD400}
+.btn{display:inline-flex;align-items:center;gap:8px;border-radius:12px;padding:10px 16px;font-weight:800;font-size:14px;background:#FFD400;color:#0A0A0A}
+.burger{display:none;width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.1);color:#fff;font-size:18px}
+
+/* the sections around ours, faded so the new one stands out */
+.ghost-sec{padding:40px 0;opacity:.45}
+.ghost-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:16px}
+.ghost-cards div{height:120px;border-radius:18px;background:var(--surface2);border:1px solid var(--border)}
+.tagbar{display:block;margin:0 0 6px;color:var(--kicker);font-family:'Josefin Sans',sans-serif;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+.h2{font-family:'Josefin Sans',sans-serif;font-weight:700;font-size:clamp(30px,4.2cqi,56px);line-height:1.12;color:var(--head);text-shadow:var(--star-head)}
+.h2::after{content:"";display:block;width:40px;height:4px;border-radius:999px;background:var(--yellow);margin-top:10px}
+.sub{color:var(--muted);font-size:16px;line-height:1.5;margin-top:10px;max-width:640px}
+
+/* ---------- THE NEW SECTION: Tap in. Level up. ---------- */
+.world-sec{padding:56px 0 64px;background:var(--bg)}
+.ws-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;margin-bottom:22px}
+.ws-head .btn{padding:14px 20px;font-size:15px;box-shadow:0 6px 18px rgba(255,212,0,.35)}
+.stage{position:relative;height:clamp(420px,44cqi,600px);border-radius:28px;overflow:hidden;background:#0A0A0A;box-shadow:0 24px 60px rgba(0,0,0,.25)}
+.stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+.glass{background:rgba(26,26,24,.82);backdrop-filter:saturate(160%) blur(14px);-webkit-backdrop-filter:saturate(160%) blur(14px);border:1px solid rgba(255,255,255,.12);color:#fff}
+.ov{position:absolute;z-index:2}
+.me{left:18px;top:18px;display:flex;gap:12px;align-items:center;padding:10px 16px 10px 10px;border-radius:18px}
+.ava{position:relative;flex:none;width:52px;height:52px;border-radius:50%;padding:3px;background:conic-gradient(#FFD400 0 0%,rgba(255,255,255,.15) 0)}
+.ava span{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;background:#2A2926;color:#FFD400;font-weight:800}
+.ava b{position:absolute;right:-5px;bottom:-3px;min-width:22px;height:22px;border-radius:11px;background:#FFD400;color:#0A0A0A;font-size:12px;font-weight:900;display:grid;place-items:center;border:2px solid #1A1A18}
+.me small{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.6);font-weight:700}
+.me strong{display:block;font-family:'Josefin Sans',sans-serif;font-size:20px;line-height:1.1}
+.xp{width:160px;height:6px;border-radius:6px;background:rgba(255,255,255,.15);margin-top:6px;overflow:hidden}.xp i{display:block;height:100%;width:0;background:#FFD400;transition:width 1s}
+.me p{font-size:12px;margin-top:5px;color:rgba(255,255,255,.75)}.me p b{color:#FFD400}
+.isle{right:18px;top:18px;padding:9px 14px;border-radius:999px;font-family:'Josefin Sans',sans-serif;font-weight:700;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#FFD400}
+.dock{left:18px;right:18px;bottom:18px;display:flex;gap:14px;align-items:center;padding:12px;border-radius:22px}
+.lvls{flex:1;display:flex;gap:8px;min-width:0;overflow-x:auto;scrollbar-width:none;padding:4px 2px}
+.lvls::-webkit-scrollbar{display:none}
+.lv{flex:none;display:grid;justify-items:center;gap:4px;width:74px;background:none;color:#fff;padding:4px 0;border-radius:14px}
+.lv .dot{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-weight:900;font-size:18px;color:#fff;border:3px solid #FFD400;box-shadow:0 0 0 2px #0A0A0A,inset 0 -6px 10px rgba(0,0,0,.25),inset 0 6px 10px rgba(255,255,255,.35);text-shadow:0 1px 2px rgba(0,0,0,.5);transition:transform .2s}
+.lv:hover .dot{transform:translateY(-3px) scale(1.06)}
+.lv small{font-size:11px;font-weight:700;color:rgba(255,255,255,.8);white-space:nowrap}
+.lv .st{font-size:10px;letter-spacing:1px;color:rgba(255,255,255,.3);height:12px;line-height:12px}.lv .st b{color:#FFD400;font-weight:400}
+.lv.locked .dot{background:#4A4843!important;border-color:#6B6862;color:#CBC8BF;font-size:15px}
+.lv.now .dot{animation:pulse 1.6s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 2px #0A0A0A,0 0 0 0 rgba(255,212,0,.7)}100%{box-shadow:0 0 0 2px #0A0A0A,0 0 0 16px rgba(255,212,0,0)}}
+.lv.now small{color:#FFD400}
+.go{flex:none;display:grid;gap:2px;text-align:left;padding:12px 18px;border-radius:16px;background:#FFD400;color:#0A0A0A;box-shadow:0 6px 18px rgba(255,212,0,.35)}
+.go small{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
+.go b{font-family:'Josefin Sans',sans-serif;font-size:18px;white-space:nowrap}
+.tapnote{left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;padding:10px 16px;border-radius:999px;font-weight:800;font-size:13px;opacity:0;transition:opacity .3s}
+.stage:hover .tapnote{opacity:1}
+
+.minis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
+.mini{display:flex;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:16px;box-shadow:0 6px 20px rgba(0,0,0,.05)}
+.mini .ic{flex:none;width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font-size:22px;background:#0A0A0A}
+.mini small{display:block;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--kicker)}
+.mini b{display:block;font-size:16px;margin-top:2px}
+.mini p{font-size:13px;color:var(--muted);margin-top:2px}
+.bar2{height:6px;border-radius:6px;background:var(--surface2);margin-top:8px;overflow:hidden}.bar2 i{display:block;height:100%;background:#FFD400}
+
+/* full world, opened from the section */
+#full{position:fixed;inset:0;z-index:200;display:none;background:#0A0A0A}
+#full.open{display:block;animation:fin .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes fin{from{opacity:0;transform:scale(.94)}}
+#full iframe{width:100%;height:100%;border:0;display:block}
+#full .close{position:absolute;left:14px;bottom:14px;z-index:2;padding:12px 16px;border-radius:999px;font-weight:800;font-size:14px}
+
+/* ---------- phone width ---------- */
+@container (max-width:760px){
+  .links,.pts{display:none}.burger{display:grid;place-items:center}
+  .ghost-cards{grid-template-columns:repeat(2,1fr)}
+  .ws-head .btn{display:none}
+  .stage{height:520px;border-radius:24px}
+  .me{left:10px;top:10px;right:10px;padding:8px 12px 8px 8px}.me strong{font-size:17px}.xp{width:100%}
+  .me > div:last-child{flex:1}
+  .ava{width:44px;height:44px}
+  .isle{right:auto;left:10px;top:92px;font-size:10.5px;padding:7px 12px}
+  .dock{left:10px;right:10px;bottom:10px;flex-direction:column;align-items:stretch;gap:10px;padding:10px}
+  .lv{width:62px}.lv .dot{width:42px;height:42px;font-size:16px}
+  .go{text-align:center}
+  .minis{grid-template-columns:1fr}
+  .tapnote{display:none}
+}
+</style>
+</head>
+<body>
+<div class="mock-bar">
+  <span>MOCKUP ·</span>
+  <div class="seg" id="vSeg"><button class="on" data-v="laptop">💻 Laptop</button><button data-v="phone">📱 Phone</button></div>
+  <div class="seg" id="tSeg"><button class="on" data-t="light">☀️ Light</button><button data-t="dark">🌙 Dark</button></div>
+</div>
+
+<div class="frame" id="frame">
+  <nav><div class="wrap nav-in">
+    <div class="logo"><i>PUNCH</i><span>Next<b>Gen</b></span></div>
+    <div class="links"><a>Home</a><a>Categories ⌄</a><a class="on">Play &amp; Win</a><a>Leaderboard</a><a>For Schools ⌄</a><a>Nominate a Star</a></div>
+    <div class="nav-r"><div class="pts">⚡ <b id="navPts">0</b> pts</div><span class="btn">@ada_reads</span><button class="burger" aria-label="Menu">☰</button></div>
+  </div></nav>
+
+  <section class="ghost-sec"><div class="wrap">
+    <span class="tagbar">This edition</span><div class="h2">Inside the Oct edition</div>
+    <div class="ghost-cards"><div></div><div></div><div></div><div></div></div>
+  </div></section>
+
+  <!-- ===== NEW: the NextGen World section (replaces the 3 game cards) ===== -->
+  <section class="world-sec" id="arcade"><div class="wrap">
+    <div class="ws-head">
+      <div>
+        <span class="tagbar">NextGen World · Oct 2026 Island</span>
+        <h2 class="h2">Tap in. Level up.</h2>
+        <p class="sub">7 levels from this edition on one island. Play to win stars and points, climb the road and beat the Boss to open the next island.</p>
+      </div>
+      <button class="btn" data-enter>🌍 Enter the world</button>
+    </div>
+
+    <div class="stage">
+      <iframe id="teaser" src="world.html?teaser=1" title="NextGen World preview" loading="lazy"></iframe>
+      <div class="ov me glass"><div class="ava" id="ava"><span>AO</span><b id="lvN">1</b></div><div><small id="lvS">Level 1</small><strong id="rank">Rookie</strong><div class="xp"><i id="xp"></i></div><p><b id="ptsN">0</b> pts · 🔥 1 day streak</p></div></div>
+      <div class="ov isle glass" id="isle">Oct 2026 Island · 0 / 7 cleared</div>
+      <div class="ov tapnote glass">Tap to enter the world</div>
+      <div class="ov dock glass">
+        <div class="lvls" id="lvls"></div>
+        <button class="go" data-enter id="goBtn"><small>Continue</small><b>▶ Level 1 · Money</b></button>
+      </div>
+    </div>
+
+    <div class="minis">
+      <div class="mini"><div class="ic">🎯</div><div><small>Today's mission</small><b>Play 1 level + read 1 story</b><p>Bonus +20 pts · 1 of 2 done</p><div class="bar2"><i style="width:50%"></i></div></div></div>
+      <div class="mini"><div class="ic">🏫</div><div><small>Your school</small><b>#4 this week</b><p>Your stars help your school climb</p></div></div>
+      <div class="mini"><div class="ic">🔒</div><div><small>Next island</small><b>Nov 2026 · Meet the candidates</b><p>Beat the Oct Boss to unlock it</p></div></div>
+    </div>
+  </div></section>
+
+  <section class="ghost-sec"><div class="wrap">
+    <span class="tagbar">Vocab Vault</span><div class="h2">Words that matter</div>
+    <div class="ghost-cards"><div></div><div></div><div></div><div></div></div>
+  </div></section>
+</div>
+
+<div id="full" role="dialog" aria-modal="true" aria-label="NextGen World">
+  <iframe id="fullFrame" title="NextGen World"></iframe>
+  <button class="close glass" id="closeFull">← Back to homepage</button>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const GAMES = [['Money', '#FFD400'], ['Quiz', '#2F7DE1'], ['Debate', '#E0457B'], ['AI', '#2FA36B'], ['Promise', '#fcb92e'], ['Words', '#6B4FD8'], ['Boss', '#E3473B']];
+const RANKS = [['Rookie', 0], ['Player One', 50], ['Combo Kid', 150], ['Rising Voice', 300], ['Brain Boss', 600], ['Game Changer', 1000], ['Street Smart', 1600], ['NextGen Legend', 2500]];
+function levelFor(p){ let i = 0; RANKS.forEach((r, k) => { if (p >= r[1]) i = k; }); const n = RANKS[i + 1]; return { level: i + 1, name: RANKS[i][0], pct: n ? (p - RANKS[i][1]) / (n[1] - RANKS[i][1]) * 100 : 100 }; }
+// same progress the world saves (so the homepage always matches it)
+function load(){ try { const s = JSON.parse(localStorage.getItem('ng-world-demo-v1')); if (s && s.stars) return s; } catch (e) {} return { stars: [0, 0, 0, 0, 0, 0, 0], points: 0 }; }
+function render(){
+  const P = load(), L = levelFor(P.points), cur = (() => { const i = P.stars.findIndex(x => x === 0); return i < 0 ? 7 : i; })();
+  $('#lvN').textContent = L.level; $('#lvS').textContent = `Level ${L.level}`; $('#rank').textContent = L.name;
+  $('#xp').style.width = L.pct + '%'; $('#ava').style.background = `conic-gradient(#FFD400 0 ${L.pct}%, rgba(255,255,255,.15) 0)`;
+  $('#ptsN').textContent = P.points; $('#navPts').textContent = P.points;
+  $('#isle').textContent = `Oct 2026 Island · ${Math.min(7, cur)} / 7 cleared`;
+  $('#lvls').innerHTML = GAMES.map(([n, c], i) => {
+    const st = i < cur ? 'done' : i === cur ? 'now' : 'locked';
+    return `<button class="lv ${st}" data-enter title="Level ${i + 1}: ${n}"><span class="dot" style="background:radial-gradient(circle at 35% 30%,#fff 0,${c} 28%,${c} 100%)">${st === 'locked' ? '🔒' : i === 6 ? '♛' : i + 1}</span><small>${n}</small><span class="st">${st === 'done' ? `<b>${'★'.repeat(P.stars[i])}</b>${'★'.repeat(3 - P.stars[i])}` : ''}</span></button>`;
+  }).join('');
+  $('#goBtn').innerHTML = cur <= 6 ? `<small>${cur ? 'Continue' : 'Start here'}</small><b>▶ Level ${cur + 1} · ${GAMES[cur][0]}</b>` : `<small>Island cleared</small><b>★ Replay for 3 stars</b>`;
+  document.querySelectorAll('[data-enter]').forEach(b => b.onclick = enter);
+}
+function enter(){
+  const f = $('#fullFrame'); if (!f.src) f.src = 'world.html';
+  $('#full').classList.add('open'); document.body.style.overflow = 'hidden';
+  $('#teaser').contentWindow?.postMessage('ng:pause', '*');
+}
+$('#closeFull').onclick = () => {
+  $('#full').classList.remove('open'); document.body.style.overflow = '';
+  render(); const t = $('#teaser'); t.src = t.src; // reload the preview so it shows your new progress
+};
+addEventListener('message', (e) => { if (e.data === 'ng:enter') enter(); });
+// mockup switches
+$('#vSeg').onclick = (e) => { const v = e.target.dataset.v; if (!v) return; $('#vSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b === e.target)); $('#frame').classList.toggle('phone', v === 'phone'); };
+$('#tSeg').onclick = (e) => { const t = e.target.dataset.t; if (!t) return; $('#tSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b === e.target)); document.documentElement.classList.toggle('dark', t === 'dark'); [$('#teaser'), $('#fullFrame')].forEach(f => f.contentWindow?.postMessage(t === 'dark' ? 'ng:night' : 'ng:day', '*')); };
+render();
+</script>
+</body>
+</html>

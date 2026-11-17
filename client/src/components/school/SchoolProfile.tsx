@@ -42,7 +42,7 @@ export default function SchoolProfile({ school, say, onSaved }: { school: School
           <div className="logo-row">
             {f.logo ? <img src={f.logo} alt="" className="logo-prev" /> : <span className="logo-prev empty">{school.name.slice(0, 1)}</span>}
             <div>
-              <b>School logo</b><small>Square works best. JPG/PNG under 3 MB.</small>
+              <b>School logo</b><small>Square works best. JPG or PNG.</small>
               <div className="code-acts" style={{ marginTop: 8 }}>
                 <button type="button" onClick={() => file.current?.click()} disabled={up}>{up ? 'Uploading…' : f.logo ? 'Change logo' : 'Upload logo'}</button>
                 {f.logo && <button type="button" onClick={() => set('logo', '')}>Remove</button>}

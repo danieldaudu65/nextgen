@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { ThemeToggle } from './ThemeToggle';
 import { fmt, usePoints } from './PointsProvider';
@@ -16,6 +17,33 @@ const SCHOOLS = [
 ];
 
 
+// A menu that opens when you hover it (desktop) or tap it (phones), and closes when you move away,
+// pick a link or press Escape. Built on <details> so it still works without JavaScript.
+function NavDropdown({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  const timer = useRef<number | undefined>(undefined);
+  const canHover = () => typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  const open = () => { window.clearTimeout(timer.current); if (canHover() && ref.current) ref.current.open = true; };
+  const close = () => { window.clearTimeout(timer.current); timer.current = window.setTimeout(() => { if (canHover() && ref.current) ref.current.open = false; }, 180); };
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && el.open) { el.open = false; el.querySelector('summary')?.focus(); } };
+    const onDoc = (e: MouseEvent) => { if (el.open && !el.contains(e.target as Node)) el.open = false; };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('click', onDoc);
+    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('click', onDoc); window.clearTimeout(timer.current); };
+  }, []);
+  return (
+    <details ref={ref} className="nav-dropdown" onMouseEnter={open} onMouseLeave={close}>
+      <summary>{label} <span aria-hidden="true">⌄</span></summary>
+      <div className={`nav-dropdown-menu${wide ? ' nav-mega' : ''}`} onClick={(e) => { if ((e.target as HTMLElement).closest('a') && ref.current) ref.current.open = false; }}>
+        {children}
+      </div>
+    </details>
+  );
+}
+
 // The logo lives in components/Logo.tsx (re-exported here for older imports)
 export { Logo } from './Logo';
 
@@ -28,20 +56,19 @@ export default function Nav() {
         <Logo onDark />
         <div className="links">
           <Link href="/">Home</Link>
-          <details className="nav-dropdown">
-            <summary>Categories <span aria-hidden="true">⌄</span></summary>
-            <div className="nav-dropdown-menu nav-mega">
-              {categories.map((c) => <Link key={c.slug} href={categoryHref(c)}><CategoryIcon name={c.icon} size={18} />{c.name}</Link>)}
-            </div>
-          </details>
-          <Link href="/#arcade">Play &amp; Win</Link>
+          <NavDropdown label="Categories" wide>
+            {categories.map((c) => (
+              <Link key={c.slug} href={categoryHref(c)} style={{ '--cat-accent': c.accent } as CSSProperties}>
+                <span className="mega-icon"><CategoryIcon name={c.icon} size={20} /></span>
+                <span className="mega-text"><b>{c.name}</b>{c.desc && <small>{c.desc}</small>}</span>
+              </Link>
+            ))}
+          </NavDropdown>
+          <Link href="/arcade">Play &amp; Win</Link>
           <Link href="/#leaders">Leaderboard</Link>
-          <details className="nav-dropdown">
-            <summary>For Schools <span aria-hidden="true">⌄</span></summary>
-            <div className="nav-dropdown-menu">
-              {SCHOOLS.map((l) => <Link key={l.href} href={l.href}>{l.label}</Link>)}
-            </div>
-          </details>
+          <NavDropdown label="For Schools">
+            {SCHOOLS.map((l) => <Link key={l.href} href={l.href}>{l.label}</Link>)}
+          </NavDropdown>
           <Link href="/nominate">Nominate a Star</Link>
           <Link href="/#about">About Us</Link>
         </div>

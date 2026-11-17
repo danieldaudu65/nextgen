@@ -1,6 +1,7 @@
 'use client';
 
 /* eslint-disable @next/next/no-img-element */
+import { accentVars } from '@/lib/storyAccent';
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import type { ArticlePage } from '@/lib/types';
@@ -28,7 +29,7 @@ export default function ArticleView({ data }: { data: ArticlePage }) {
       {/* Reading time → points → the story question (see ReadGate.tsx) */}
       <ReadGate bodyRef={bodyRef} article={article} onDepth={setDepth} />
 
-      <article className="story">
+      <article className="story" style={accentVars(article.accent)}>
         <header className="story-head wrap">
           <div className="crumbs" role="navigation" aria-label="Breadcrumb">
             <Link href="/">Home</Link><span>/</span>

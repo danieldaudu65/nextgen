@@ -4,7 +4,10 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { adminApi, can, type AdminArticle, type AdminEditionRow, type ArticleStatus } from '@/lib/adminApi';
+import { adminApi, can, type AdminArticle, type AdminEditionRow, type ArticleStatus, type FormattedStory, type ReadPagesResult } from '@/lib/adminApi';
+import { cropPicture, loadPage, pageForAI, STORY_COLOURS, textOn, type PagePhoto } from '@/lib/pagePhotos';
+import { pdfToPages } from '@/lib/pdfPages';
+import { accentVars } from '@/lib/storyAccent';
 import { ApiError } from '@/lib/api';
 import type { Edition, SectionCard, VocabWord } from '@/lib/types';
 import ArticleBody from '../article/ArticleBody';
@@ -31,6 +34,7 @@ const SPOTS = [
 type Form = {
   title: string; slug: string; edition: string; section: string; sectionLabel: string; pages: string;
   dek: string; image: string; imagePosition: string; imageFit: ImageFit; homepageFeatured: boolean; author: string; readMins: number; points: number;
+  accent: string; // the story's colour ('' = the normal NextGen yellow)
   gallery: { image: string; caption: string }[];
   body: string; eli10: string; gameLabel: string; gameHref: string; tags: string; reviewNote: string;
   // the quick-check question shown after the reading time
@@ -38,10 +42,14 @@ type Form = {
 };
 
 const EMPTY: Form = {
-  title: '', slug: '', edition: '', section: '', sectionLabel: '', pages: '', dek: '', image: '', imagePosition: '', imageFit: 'auto', homepageFeatured: false, gallery: [],
+  title: '', slug: '', edition: '', section: '', sectionLabel: '', pages: '', dek: '', image: '', imagePosition: '', imageFit: 'auto', homepageFeatured: false, gallery: [], accent: '',
   author: 'NextGen Team', readMins: 3, points: 10, body: '', eli10: '', gameLabel: '', gameHref: '', tags: '', reviewNote: '',
   qPrompt: '', qOptions: ['', '', '', ''], qAnswer: 0, qExplain: '',
 };
+
+const MAX_PHOTOS = 4;
+// What "Snap the pages" did, shown after reading
+type SnapSummary = { pages: number; readBy: string; accent: string; accentRaw: string | null; cover: boolean; profiles: number; gallery: number; failed: number };
 
 const slugify = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 80);
 // One line in the box = one block on the page
@@ -54,7 +62,7 @@ function toForm(a: AdminArticle): Form {
   return {
     title: a.title, slug: a.slug, edition: a.edition, section: a.section, sectionLabel: a.sectionLabel, pages: a.pages ?? '',
     dek: a.dek ?? '', image: a.image ?? '', imagePosition: a.imagePosition ?? '', imageFit: a.imageFit ?? 'auto', homepageFeatured: a.homepageFeatured ?? false, gallery: (a.gallery ?? []).map((item) => ({ image: item.image, caption: item.caption ?? '' })), author: a.author ?? 'NextGen Team',
-    readMins: a.readMins, points: a.points, body: fromBlocks(a.body), eli10: fromBlocks(a.eli10),
+    readMins: a.readMins, points: a.points, body: fromBlocks(a.body), eli10: fromBlocks(a.eli10), accent: a.accent ?? '',
     gameLabel: a.game?.label ?? '', gameHref: a.game?.href ?? '', tags: (a.tags ?? []).join(', '), reviewNote: a.reviewNote ?? '',
     qPrompt: a.question?.prompt ?? '', qOptions: [0, 1, 2, 3].map((i) => a.question?.options?.[i] ?? ''), qAnswer: a.question?.answer ?? 0, qExplain: a.question?.explain ?? '',
   };
@@ -65,6 +73,7 @@ function toPayload(f: Form) {
     title: f.title.trim(), slug: f.slug.trim(), edition: f.edition, section: f.section, sectionLabel: f.sectionLabel,
     // null (not undefined) so removing a picture or page number is saved too
     pages: f.pages || null, dek: f.dek, image: f.image || null, imagePosition: f.imagePosition || null, imageFit: f.imageFit, homepageFeatured: f.homepageFeatured, gallery: f.gallery,
+    accent: f.accent || null,
     author: f.author, readMins: Number(f.readMins) || 3, points: Number(f.points) || 10,
     body: toBlocks(f.body), eli10: toBlocks(f.eli10),
     game: f.gameLabel && f.gameHref ? { label: f.gameLabel, href: f.gameHref } : undefined,
@@ -102,7 +111,12 @@ export default function ArticleEditor({ id }: { id?: string }) {
   // open by default on a new story; afterwards the editor decides (it stays open after formatting so the result shows)
   const [pasteOpen, setPasteOpen] = useState(!id);
   const [formatting, setFormatting] = useState(false);
-  const [formatted, setFormatted] = useState<{ source: 'ai' | 'basic'; notes: string; vocab: VocabWord[] } | null>(null);
+  const [formatted, setFormatted] = useState<{ source: 'ai' | 'basic'; notes: string; vocab: VocabWord[]; snap?: SnapSummary } | null>(null);
+  // "Snap the pages": photos of the printed article (1–4, in order)
+  const [startMode, setStartMode] = useState<'snap' | 'paste'>('snap');
+  const [photos, setPhotos] = useState<PagePhoto[]>([]);
+  const [snapStep, setSnapStep] = useState('');
+  const [transcript, setTranscript] = useState('');
   const [dragging, setDragging] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const inlineImageRef = useRef<HTMLInputElement>(null);
@@ -153,14 +167,13 @@ export default function ArticleEditor({ id }: { id?: string }) {
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Send the pasted article to the server and fill the form with the result
-  const formatPasted = async () => {
-    const hasContent = form.title.trim() || form.body.trim();
-    if (hasContent && !window.confirm('Replace the title, summary, story and kids version with the formatted article?')) return;
-    setFormatting(true);
-    try {
-      const { story, source } = await adminApi.formatArticle(pasteText, form.edition || undefined);
-      setForm((f) => ({
+  // Fill the form with a story from the formatter (pasted text or photos). extra = pictures and colour from photos.
+  const applyStory = async (story: FormattedStory, source: 'ai' | 'basic', extra: Partial<Form> = {}, snap?: SnapSummary) => {
+    const { image: newCover, gallery: newGallery, ...rest } = extra;
+    setForm((f) => {
+      // the cover from the photos becomes the main picture, unless the story already has one (then it joins the gallery)
+      const more = [...(newCover && f.image ? [{ image: newCover, caption: '' }] : []), ...(newGallery ?? [])];
+      return {
         ...f,
         title: story.title || f.title,
         slug: slugTouched ? f.slug : slugify(story.title || f.title),
@@ -174,17 +187,130 @@ export default function ArticleEditor({ id }: { id?: string }) {
         ...(story.game && !f.gameLabel && !f.gameHref ? { gameLabel: story.game.label, gameHref: story.game.href } : {}),
         ...(story.points && !f.points ? { points: story.points } : {}),
         ...(story.question ? { qPrompt: story.question.prompt, qOptions: [0, 1, 2, 3].map((i) => story.question?.options[i] ?? ''), qAnswer: story.question.answer, qExplain: story.question.explain ?? '' } : {}),
-      }));
-      const known = new Set(vocab.map((v) => v.word.toLowerCase()));
-      const fresh = story.vocab.filter((v) => !known.has(v.word.toLowerCase()));
-      setFormatted({ source, notes: story.notes, vocab: fresh });
-      // [[words]] only light up when they are in the volume's Vocab Vault, so editors get them added straight away
-      if (fresh.length && form.edition && can(admin, 'editor')) await addSuggestedVocab(fresh);
+        ...rest,
+        image: f.image || newCover || '',
+        gallery: more.length ? [...f.gallery, ...more] : f.gallery,
+      };
+    });
+    const known = new Set(vocab.map((v) => v.word.toLowerCase()));
+    const fresh = story.vocab.filter((v) => !known.has(v.word.toLowerCase()));
+    setFormatted({ source, notes: story.notes, vocab: fresh, snap });
+    // [[words]] only light up when they are in the volume's Vocab Vault, so editors get them added straight away
+    if (fresh.length && form.edition && can(admin, 'editor')) await addSuggestedVocab(fresh);
+  };
+
+  // Send the pasted article to the server and fill the form with the result
+  const formatPasted = async () => {
+    const hasContent = form.title.trim() || form.body.trim();
+    if (hasContent && !window.confirm('Replace the title, summary, story and kids version with the formatted article?')) return;
+    setFormatting(true);
+    try {
+      const { story, source } = await adminApi.formatArticle(pasteText, form.edition || undefined);
+      await applyStory(story, source);
       toast(source === 'ai' ? 'Formatted. Check it over before you save ✨' : 'Split into title and paragraphs. Add an AI key for full formatting');
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Could not format the article', true);
     } finally {
       setFormatting(false);
+    }
+  };
+
+  // ----- Snap the pages -----
+  // Photos and PDFs. Each PDF page counts as one page (up to MAX_PHOTOS in all).
+  const [opening, setOpening] = useState(false);
+  const addPhotos = async (files: FileList | File[] | null) => {
+    const list = Array.from(files ?? []);
+    if (!list.length) return;
+    let room = MAX_PHOTOS - photos.length;
+    if (room <= 0) { toast(`Up to ${MAX_PHOTOS} pages per story`, true); return; }
+    const added: PagePhoto[] = [];
+    setOpening(true);
+    try {
+      for (const file of list) {
+        if (room <= 0) { toast(`Only the first ${MAX_PHOTOS} pages were added`, true); break; }
+        try {
+          if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+            const { pages, total } = await pdfToPages(file, room);
+            if (total > pages.length) toast(`${file.name}: only the first ${pages.length} of its ${total} pages were added (up to ${MAX_PHOTOS} in all)`, true);
+            added.push(...pages);
+            room -= pages.length;
+          } else {
+            added.push(await loadPage(file));
+            room -= 1;
+          }
+        } catch (err) {
+          toast(err instanceof Error && err.message ? `${file.name}: ${err.message}` : `Could not open ${file.name}`, true);
+        }
+      }
+    } finally {
+      setOpening(false);
+    }
+    setPhotos((p) => [...p, ...added]);
+  };
+  const movePhoto = (i: number, d: number) => setPhotos((p) => {
+    const j = i + d;
+    if (j < 0 || j >= p.length) return p;
+    const next = [...p];
+    [next[i], next[j]] = [next[j], next[i]];
+    return next;
+  });
+  const removePhoto = (i: number) => setPhotos((p) => {
+    URL.revokeObjectURL(p[i].preview);
+    return p.filter((_, k) => k !== i);
+  });
+
+  const readSnapped = async () => {
+    if (!photos.length) return;
+    const hasContent = form.title.trim() || form.body.trim();
+    if (hasContent && !window.confirm('Replace the title, summary, story and kids version with the story from the photos?')) return;
+    setFormatting(true);
+    try {
+      setSnapStep('Getting the photos ready…');
+      const pages = await Promise.all(photos.map(pageForAI));
+      setSnapStep(`Reading ${photos.length === 1 ? 'the page' : `${photos.length} pages`} and writing the story… (about a minute)`);
+      const res: ReadPagesResult = await adminApi.readPages(pages, form.edition || undefined);
+      setTranscript(res.transcript);
+
+      // cut the printed pictures out of the original photos and upload them
+      const pics = res.design.pictures;
+      let body = [...res.story.body];
+      let cover = '';
+      const gallery: { image: string; caption: string }[] = [];
+      let failed = 0, profiles = 0;
+      for (let k = 0; k < pics.length; k++) {
+        const pic = pics[k];
+        const page = photos[pic.photo - 1];
+        if (!page) continue;
+        setSnapStep(`Cutting out picture ${k + 1} of ${pics.length}…`);
+        try {
+          const url = await adminApi.uploadImage(await cropPicture(page, pic.box, pic.name || pic.caption || 'picture'));
+          if (pic.role === 'cover' && !cover) cover = url;
+          else if (pic.role === 'profile') {
+            // add the photo to that person's profile card; no matching card → the gallery
+            const at = body.findIndex((b) => b.toLowerCase().startsWith(`@profile ${pic.name.toLowerCase()}`));
+            if (at >= 0) { body[at] = `${body[at]} | ${url}`; profiles += 1; } else gallery.push({ image: url, caption: pic.name });
+          } else gallery.push({ image: url, caption: pic.caption });
+        } catch {
+          failed += 1;
+        }
+      }
+      const accent = res.design.accent || '';
+      await applyStory({ ...res.story, body }, res.source, {
+        accent,
+        ...(cover ? { image: cover } : {}),
+        ...(gallery.length ? { gallery } : {}),
+      }, { pages: photos.length, readBy: res.design.readBy ?? '', accent, accentRaw: res.design.accentRaw, cover: Boolean(cover), profiles, gallery: gallery.length, failed });
+      // the server may have put the pages in their printed section order: show the thumbnails the same way
+      const order = res.design.order ?? [];
+      if (order.length === photos.length && order.some((n, k) => n !== k + 1) && new Set(order).size === order.length) {
+        setPhotos(order.map((n) => photos[n - 1]).filter(Boolean));
+      }
+      toast('Read the pages. Check it over before you save 📸');
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Could not read the photos', true);
+    } finally {
+      setFormatting(false);
+      setSnapStep('');
     }
   };
 
@@ -452,22 +578,78 @@ export default function ArticleEditor({ id }: { id?: string }) {
       <div className="editor">
         <fieldset className="editor-form" disabled={locked}>
 
-          {/* 0. Paste a normal article and let the system lay it out */}
+          {/* 0. Start from the print: photos of the pages, or the pasted text. The system lays it out the NextGen way. */}
           <details className="editor-panel paste-panel" open={pasteOpen} onToggle={(e) => setPasteOpen((e.currentTarget as HTMLDetailsElement).open)}>
             <summary className="panel-head">
               <span className="panel-no">✨</span>
-              <div><h2>Paste your article</h2><p>Paste the plain article and the system lays it out the NextGen way: title, summary, headings, callouts, vocab words and the kids version. Facts stay the same.</p></div>
+              <div><h2>Start from the article</h2><p>Snap the printed pages or paste the text. The system lays it out the NextGen way: title, summary, headings, callouts, vocab words, the kids version and the check question. Facts stay the same.</p></div>
             </summary>
-            <textarea className="paste-box" rows={9} value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder={'Paste the article here, just as it was written…\n\nTip: choose the Volume first (step 1) so the right section can be picked.'} />
-            <div className="paste-actions">
-              <button type="button" className="btn dark" disabled={formatting || pasteText.trim().length < 40} onClick={formatPasted}>{formatting ? 'Formatting… (can take ~30s)' : '✨ Format for NextGen'}</button>
-              <small className="muted">{pasteText.trim() ? `${pasteText.trim().split(/\s+/).length} words` : 'Nothing is saved until you press Save or Publish.'}</small>
+            <div className="start-tabs" role="tablist" aria-label="How to start">
+              <button type="button" role="tab" aria-selected={startMode === 'snap'} className={startMode === 'snap' ? 'on' : ''} onClick={() => setStartMode('snap')}>📸 Snap the pages</button>
+              <button type="button" role="tab" aria-selected={startMode === 'paste'} className={startMode === 'paste' ? 'on' : ''} onClick={() => setStartMode('paste')}>📝 Paste the text</button>
             </div>
+
+            {startMode === 'snap' ? (
+              <div className="snap">
+                <p className="muted snap-tip">Add a photo of each page of the article (up to {MAX_PHOTOS}), flat, straight and in good light, or the PDF of the pages. Best of all: the PDF exported from the design file, because its text is copied exactly. Put the pages in reading order. The system copies the text, picks up the colour and icons, and cuts out the pictures.</p>
+                <div
+                  className={`snap-pages${dragging ? ' drag' : ''}`}
+                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(e) => { e.preventDefault(); setDragging(false); void addPhotos(e.dataTransfer.files); }}
+                >
+                  {photos.map((ph, i) => (
+                    <figure key={ph.id} className="snap-page">
+                      <img src={ph.preview} alt={`Page ${i + 1}`} />
+                      <span className="snap-no">{i + 1}</span>
+                      {ph.pdf && <span className={`snap-kind${ph.pdf.text ? ' text' : ''}`} title={ph.pdf.text ? 'This PDF page has real text: it is copied exactly, no AI reading needed' : 'This PDF page is a scan (a picture): the AI reads it like a photo'}>{ph.pdf.text ? 'PDF · text' : 'PDF · scan'}</span>}
+                      <figcaption>
+                        <button type="button" aria-label={`Move page ${i + 1} earlier`} disabled={i === 0 || formatting} onClick={() => movePhoto(i, -1)}>←</button>
+                        <button type="button" aria-label={`Remove page ${i + 1}`} disabled={formatting} onClick={() => removePhoto(i)}>✕</button>
+                        <button type="button" aria-label={`Move page ${i + 1} later`} disabled={i === photos.length - 1 || formatting} onClick={() => movePhoto(i, 1)}>→</button>
+                      </figcaption>
+                    </figure>
+                  ))}
+                  {photos.length < MAX_PHOTOS && (
+                    <label className="snap-add">
+                      <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple disabled={formatting || opening} onChange={(e) => { void addPhotos(e.target.files); e.target.value = ''; }} />
+                      <span className="snap-plus">{opening ? '…' : '＋'}</span>
+                      <b>{opening ? 'Opening…' : photos.length ? 'Add the next page' : 'Add photos or a PDF of the pages'}</b>
+                      <small>Photo, PDF or pick from your files · {photos.length}/{MAX_PHOTOS}</small>
+                    </label>
+                  )}
+                </div>
+                <div className="paste-actions">
+                  <button type="button" className="btn dark" disabled={formatting || opening || !photos.length} onClick={readSnapped}>{formatting && snapStep ? snapStep : `📸 Read ${photos.length > 1 ? `the ${photos.length} pages` : 'the page'}`}</button>
+                  <small className="muted">Nothing is saved until you press Save or Publish.</small>
+                </div>
+              </div>
+            ) : (
+              <>
+                <textarea className="paste-box" rows={9} value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder={'Paste the article here, just as it was written…\n\nTip: choose the Volume first (step 1) so the right section can be picked.'} />
+                <div className="paste-actions">
+                  <button type="button" className="btn dark" disabled={formatting || pasteText.trim().length < 40} onClick={formatPasted}>{formatting ? 'Formatting… (can take ~30s)' : '✨ Format for NextGen'}</button>
+                  <small className="muted">{pasteText.trim() ? `${pasteText.trim().split(/\s+/).length} words` : 'Nothing is saved until you press Save or Publish.'}</small>
+                </div>
+              </>
+            )}
             {formatted && (
               <div className={`paste-result ${formatted.source}`}>
                 <b>{formatted.source === 'ai' ? 'Done. Read it through and check the facts before publishing.' : 'Basic formatting only.'}</b>
                 {formatted.source === 'basic' && <p>The text was split into a title and paragraphs. For the full NextGen formatting, add a free <code>GROQ_API_KEY</code> (or <code>GEMINI_API_KEY</code> / <code>ANTHROPIC_API_KEY</code>) to <code>server/.env</code> and restart the server.</p>}
+                {formatted.snap && (
+                  <ul className="snap-summary">
+                    <li>Read <b>{formatted.snap.pages}</b> page{formatted.snap.pages === 1 ? '' : 's'}{formatted.snap.readBy ? <> with <b>{formatted.snap.readBy}</b></> : null}.</li>
+                    <li>Colour: {formatted.snap.accent
+                      ? <><i className="snap-swatch" style={{ background: formatted.snap.accent }} /> <b>{STORY_COLOURS.find((c) => c.hex === formatted.snap?.accent)?.name ?? formatted.snap.accent}</b>, the closest site colour to the print{formatted.snap.accentRaw ? <> (<i className="snap-swatch" style={{ background: formatted.snap.accentRaw }} /> {formatted.snap.accentRaw})</> : null}. Change it under “Story colour”.</>
+                      : <>no strong colour on the page, so the normal NextGen yellow.</>}</li>
+                    <li>Pictures: {formatted.snap.cover ? 'the main picture, ' : ''}{formatted.snap.profiles ? `${formatted.snap.profiles} on profile cards, ` : ''}{formatted.snap.gallery ? `${formatted.snap.gallery} in the gallery` : (formatted.snap.cover || formatted.snap.profiles ? 'nothing else' : 'none found')}{formatted.snap.failed ? `. ${formatted.snap.failed} could not be cut out` : ''}. Swap any of them for a sharper copy below.</li>
+                  </ul>
+                )}
                 {formatted.notes && <p><b>Please check:</b> {formatted.notes}</p>}
+                {formatted.snap && transcript && (
+                  <details className="snap-read"><summary>Show the text it read off the photos</summary><pre>{transcript}</pre></details>
+                )}
                 {formatted.vocab.length > 0 && (
                   <div className="paste-vocab">
                     <span>Suggested Vocab Vault words: {formatted.vocab.map((v) => <i key={v.word} title={v.definition}>{v.word}</i>)}</span>
@@ -547,7 +729,7 @@ export default function ArticleEditor({ id }: { id?: string }) {
                 <label className="dropzone-empty">
                   <span className="dropzone-ico"><AdminIcon name="image" size={28} /></span>
                   <b>{uploading ? 'Uploading…' : 'Drop a picture here, or click to upload'}</b>
-                  <small>JPG, PNG, WEBP or GIF · up to 5 MB</small>
+                  <small>JPG, PNG, WEBP or GIF · big photos are shrunk for you</small>
                   <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(e) => upload(e.target.files?.[0])} hidden disabled={uploading} />
                 </label>
               )}
@@ -607,7 +789,7 @@ export default function ArticleEditor({ id }: { id?: string }) {
                 <p><b>2. Context:</b> Explain what readers need to know in short, clear paragraphs.</p>
                 <p><b>3. Why it matters:</b> Connect the story to young people or their community.</p>
                 <p><b>4. Next step:</b> Say what happens next or what readers can do.</p>
-                <p><b>Magazine layouts:</b> <code>@photos link | link | caption</code> shows two photos overlapping. <code>@profile Name | 14 | Acting · Young Star | link | link</code> makes a profile card; the lines under it (a <code>###</code> headline and text) belong to it. Profiles one after another sit side by side. End a group with <code>---</code>.</p>
+                <p><b>Magazine layouts:</b> <code>@photos link | link | caption</code> shows two photos overlapping. <b>Heading icons:</b> start a heading with an icon, for example <code>## :bulb: Smart moves</code>. Icons: <code>:ballot: :piggy: :bulb: :robot: :trophy: :puzzle: :book: :mega: :shades: :bolt: :flame: :star: :ear:</code>. <code>@profile Name | 14 | Acting · Young Star | link | link</code> makes a profile card; the lines under it (a <code>###</code> headline and text) belong to it. Profiles one after another sit side by side. End a group with <code>---</code>.</p>
                 <button type="button" className="btn sm white" onClick={insertStoryOutline}>Insert the story headings</button>
               </details>
               <div className="editor-ribbon" role="toolbar" aria-label="Story formatting">
@@ -623,6 +805,18 @@ export default function ArticleEditor({ id }: { id?: string }) {
               <input ref={inlineImageRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={(e) => uploadInlineImage(e.target.files?.[0])} />
               <input ref={layoutRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden onChange={(e) => uploadLayoutPhotos(e.target.files)} />
               <span className="writing-hint">Tip: select text to format it · Ctrl+B bold · Ctrl+I italic · Ctrl+K link</span>
+            </div>
+            <div className="story-colour" role="radiogroup" aria-label="Story colour">
+              <span className="label-row"><b>Story colour</b><small>Callout boxes, bullets and highlights. Set from the photos; change it any time.</small></span>
+              <div className="story-colour-row">
+                <button type="button" role="radio" aria-checked={!form.accent} className={`swatch none${!form.accent ? ' on' : ''}`} onClick={() => set('accent', '')} title="Normal NextGen yellow">Normal</button>
+                {STORY_COLOURS.map((c) => (
+                  <button key={c.hex} type="button" role="radio" aria-checked={form.accent === c.hex} aria-label={c.name} title={c.name}
+                    className={`swatch${form.accent === c.hex ? ' on' : ''}`} style={{ background: c.hex, color: textOn(c.hex) }} onClick={() => set('accent', c.hex)}>
+                    {form.accent === c.hex ? '✓' : ''}
+                  </button>
+                ))}
+              </div>
             </div>
             <label>&quot;Explain like I&apos;m 10&quot; version (optional)
               <textarea rows={5} value={form.eli10} onChange={(e) => set('eli10', e.target.value)} placeholder="Same story in very simple words. Same format." />
@@ -686,7 +880,7 @@ export default function ArticleEditor({ id }: { id?: string }) {
             <b>Live preview</b>
             <label className="mini-toggle"><input type="checkbox" checked={previewEli} onChange={(e) => setPreviewEli(e.target.checked)} /> ELI10</label>
           </div>
-          <div className="preview-page">
+          <div className="preview-page" style={accentVars(form.accent)}>
             {form.sectionLabel && <span className="chip">{form.sectionLabel}</span>}
             <h2 className="display">{form.title || 'Your title'}</h2>
             {form.dek && <p className="dek">{form.dek}</p>}

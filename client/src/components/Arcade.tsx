@@ -1,37 +1,24 @@
 import type { Debate, Edition } from '@/lib/types';
-import { Icon } from './Icon';
-import MoneyGame from './games/MoneyGame';
-import QuizGame from './games/QuizGame';
-import DebateVote from './games/DebateVote';
-import GameLock from './games/GameLock';
+import WorldTeaser from './world/WorldTeaser';
+import EnterWorldButton from './world/EnterWorldButton';
+import '@/app/arcade/arcade.css';
 
-// Homepage shows 3 games. The rest (SortGame, PromiseChecker, WordSearchGame)
-// are ready in components/games/ for the full Arcade page.
-export default function Arcade({ edition, debate }: { edition: Edition; debate: Debate }) {
+// Homepage section for NextGen World. The full 3D island and its 7 levels live on /arcade
+// (components/world/WorldPage.tsx). The old 3 game cards are in components/games/ (still used by the world).
+// `debate` is kept so app/page.tsx does not need to change.
+export default function Arcade({ edition }: { edition: Edition; debate?: Debate | null }){
   return (
-    <section className="sec arcade" id="arcade">
+    <section className="sec" id="arcade">
       <div className="wrap">
-        <div className="sec-head">
+        <div className="sec-head wt-head">
           <div>
-            <span className="tagbar">CRACK THIS ARCADE</span>
-            <h2 className="display">Read it. Then play it.</h2>
+            <span className="tagbar">NextGen World · {edition.month} Island</span>
+            <h2 className="display">Tap in. Level up.</h2>
+            <p className="sub">7 levels from this edition on one island. Win stars and points, climb the road, and beat the Boss to open the next island.</p>
           </div>
-          <p className="sub">Every game comes from a story in this edition. Try them, they work.</p>
+          <EnterWorldButton />
         </div>
-        {/* Only members (school code or own package) can play: see GameLock */}
-        <GameLock>
-          <div className="games">
-            <MoneyGame money={edition.money} edition={edition.slug} />
-            <QuizGame slug={edition.slug} questions={edition.quiz} />
-            <DebateVote debate={debate} />
-          </div>
-        </GameLock>
-        <div className="more">
-          <span>More in the arcade</span>
-          <a href="#"><Icon name="robot" />Cheat Code or Study Buddy?</a>
-          <a href="#"><Icon name="ballot" />Promise Checker</a>
-          <a href="#"><Icon name="puzzle" />Crossword &amp; Word Search</a>
-        </div>
+        <WorldTeaser edition={edition} />
       </div>
     </section>
   );

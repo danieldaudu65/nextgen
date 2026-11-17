@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { ArticleCard, Edition } from '@/lib/types';
-import SmartImage from './SmartImage';
+import { readPalette, type Palette } from '@/lib/imagePalette';
 
 function useCountdown(target?: string) {
   const [left, setLeft] = useState({ d: 0, h: 0, m: 0 });
@@ -38,11 +38,31 @@ export default function Hero({ edition, stories = [], seconds = 7, total }: { ed
   const slides = stories.filter((story): story is ArticleCard & { image: string } => Boolean(story.image));
   const count = Math.min(slides.length, total ?? slides.length) || slides.length;
   const [active, setActive] = useState(0);
-  const [hovered, setHovered] = useState(false);
   const [stopped, setStopped] = useState(false);   // the pause button
   const [hidden, setHidden] = useState(false);     // tab in the background
   const [cycle, setCycle] = useState(0);           // restarts the progress bar after a manual change
   const touch = useRef<number | null>(null);
+
+  // Each picture's own colours (read in the browser) → the fade behind it and the glow
+  const [palettes, setPalettes] = useState<Record<string, Palette>>({});
+  const slideKey = slides.map((x) => x.image).join('|');
+  useEffect(() => {
+    let alive = true;
+    slides.forEach((x) => readPalette(x.image).then((p) => { if (alive && p) setPalettes((m) => (m[x.image] ? m : { ...m, [x.image]: p })); }));
+    return () => { alive = false; };
+  }, [slideKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Full screen: the hero fills the window below the navbar, so the ticker sits at the very bottom
+  const [navH, setNavH] = useState(0);
+  useEffect(() => {
+    const nav = document.querySelector('nav');
+    if (!nav) return;
+    const on = () => setNavH(Math.round(nav.getBoundingClientRect().height));
+    on();
+    const ro = new ResizeObserver(on);
+    ro.observe(nav);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     const on = () => setHidden(document.hidden);
@@ -58,7 +78,8 @@ export default function Hero({ edition, stories = [], seconds = 7, total }: { ed
   }, [count]);
   const next = () => go(active + 1);
   const prev = () => go(active - 1);
-  const paused = hovered || stopped || hidden || count < 2;
+  // keeps sliding even with the mouse over it; only the pause button (or a hidden tab) stops it
+  const paused = stopped || hidden || count < 2;
 
   const story = slides[active];
   const upNext = count > 1 ? slides[(active + 1) % count] : null;
@@ -66,9 +87,8 @@ export default function Hero({ edition, stories = [], seconds = 7, total }: { ed
   return (
     <header
       className={`hero${story ? ' hero-with-story' : ''}`}
+      style={story && navH ? { minHeight: `calc(100svh - ${navH}px)` } : undefined}
       id="top"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       onTouchStart={(e) => { touch.current = e.touches[0].clientX; }}
       onTouchEnd={(e) => {
         if (touch.current === null || count < 2) return;
@@ -79,31 +99,38 @@ export default function Hero({ edition, stories = [], seconds = 7, total }: { ed
     >
       {/* Featured pictures stacked; the active one fades in (all stay loaded so switching is instant) */}
       {slides.slice(0, count).map((s, i) => (
-        <div className={`hero-media${i === active ? ' on' : ''}`} key={s.slug} aria-hidden="true">
-          <SmartImage src={s.image} position={s.imagePosition} fit={s.imageFit} align="right center" tolerance={0.5} />
+        <div className={`hero-media${i === active ? ' on' : ''}`} key={s.slug} aria-hidden="true"
+          style={palettes[s.image] ? ({ '--pic-edge': palettes[s.image].edge } as CSSProperties) : undefined}>
+          {/* The whole picture, never cropped or stretched: it sits on the right, black fills the rest,
+              and a dark fade runs to the left behind the text */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="hero-pic" src={s.image} alt="" loading={i === 0 ? 'eager' : 'lazy'} decoding="async" />
         </div>
       ))}
+      {/* Warm yellow / orange glow over the picture, like punchnextgen.com */}
+      {story && <div className="hero-glow" aria-hidden="true"
+        style={palettes[story.image] ? ({ '--glow1': palettes[story.image].glow, '--glow2': palettes[story.image].glow2 } as CSSProperties) : undefined} />}
       <div className="dots" />
       <div className="wrap hero-grid">
         <div>
           {edition ? <span className="edition-pill">Student Edition · {edition.volume || 'Edition'} <b>{(edition.month || '').toUpperCase()}</b></span> : <span className="edition-pill">NEXTGEN · STORIES FOR YOU</span>}
-          <h1 className="display">
-            {first} {accent && <span className="g">{accent}</span>}
-          </h1>
-          <div className="loading">
-            <span className="display">{edition?.headlineAccent ?? 'Coming soon'}</span>
-            <div className="bar" aria-hidden="true">
-              {Array.from({ length: 6 }).map((_, i) => <i key={i} />)}
+          {/* With featured stories, the story title is the headline (like punchnextgen.com); otherwise the edition's */}
+          {!story && (
+            <h1 className="display">
+              {first} {accent && <span className="g">{accent}</span>}
+            </h1>
+          )}
+          {/* The hero is always one screen tall and its text sits at the bottom, so the buttons stay
+              in the same place on every slide; a longer title just grows upwards */}
+          {story ? (
+            <div className="hero-story on" key={story.slug} aria-live={paused ? 'polite' : 'off'}>
+              <span className="hero-story-label">Featured story · {story.sectionLabel}</span>
+              <h2>{story.title}</h2>
+              {story.dek && <p>{story.dek}</p>}
             </div>
-          </div>
-          {story ? <div className="hero-story" key={story.slug} aria-live={paused ? 'polite' : 'off'}>
-            <span className="hero-story-label">Featured story · {story.sectionLabel}</span>
-            <h2>{story.title}</h2>
-            {story.dek && <p>{story.dek}</p>}
-            <a className="btn" href={`/articles/${story.slug}`}>Read this story →</a>
-          </div> : edition ? <Lede text={edition.lede} /> : <p className="hero-empty">New stories are on the way. Check back soon.</p>}
+          ) : edition ? <Lede text={edition.lede} /> : <p className="hero-empty">New stories are on the way. Check back soon.</p>}
           {(edition || story) && <div className="hero-cta">
-            <a className="btn white hero-read-story" href={story ? `/articles/${story.slug}` : '#edition'}>{story ? 'Read story' : 'Explore NextGen →'}</a>
+            <a className="btn hero-read-story" href={story ? `/articles/${story.slug}` : '#edition'}>{story ? 'Read the story →' : 'Explore NextGen →'}</a>
             {edition && <a className="btn dark" href="#edition">Explore this edition →</a>}
           </div>}
           {edition?.electionDate && (

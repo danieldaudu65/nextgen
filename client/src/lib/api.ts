@@ -1,6 +1,7 @@
 import type { Category } from './categories';
 import type { ArticleCard, HomepageHero, ArticlePage, ArticlePreview, Debate, Edition, EditionSummary, Leaderboard, LeaderRange, Me, NominationForm, QuestionState, School, Showcase, SiteSettings, Star, StoryQuestion, VocabWord } from './types';
 import { getDeviceId } from './device';
+import { shrinkImage } from './shrinkImage';
 
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000').replace(/\/$/, '');
 
@@ -30,8 +31,12 @@ export async function getHomepageHero(): Promise<HomepageHero> {
 }
 // Site categories from Admin → Categories (null when the server can't be reached)
 export const getCategories = () => getOptional<Category[]>('/categories', 'categories');
+// Admin → Settings (and the homepage line-ups), read on the server for the homepage
+export const getSiteSettings = () => getOptional<SiteSettings>('/site/settings', 'settings');
 export const getCategory = (slug: string) => getOptional<{ category: Category; articles: ArticleCard[] }>(`/categories/${encodeURIComponent(slug)}`, '');
 export const getPublishedArticles = async (): Promise<ArticleCard[]> => (await getOptional<ArticleCard[]>('/articles', 'articles')) ?? [];
+// Every published story (up to 100, newest first) for the /articles page
+export const getAllArticles = async (): Promise<ArticleCard[]> => (await getOptional<ArticleCard[]>('/articles?limit=100', 'articles')) ?? [];
 export const getEditions = async (): Promise<EditionSummary[]> => (await getOptional<EditionSummary[]>('/editions', 'editions')) ?? [];
 export const getDebate = () => getOptional<Debate>('/user_debate/current', 'debate');
 export async function getLeadArticle(): Promise<{ article: ArticlePreview; vocab: VocabWord[] } | null> {
@@ -128,7 +133,7 @@ export const api = {
   nominate: (f: NominationForm) => call<{ message: string }>('/nominations', { ...f, nomineeAge: f.nomineeAge || null }),
   nominationPhoto: async (file: File) => {
     const form = new FormData();
-    form.append('image', file);
+    form.append('image', await shrinkImage(file));
     const res = await fetch(`${API_URL}/nominations/photo`, { method: 'POST', body: form });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.success === false) throw new ApiError(res.status, data.message ?? 'Upload failed');

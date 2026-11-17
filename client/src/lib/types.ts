@@ -52,6 +52,8 @@ export interface Article {
   gallery?: { image: string; caption?: string }[];
   imagePosition?: string;
   imageFit?: ImageFit;
+  /** The story's colour from the printed page (one of the site colours); none = the normal yellow */
+  accent?: string | null;
   author?: string;
   readMins: number;
   points: number;
@@ -176,7 +178,7 @@ export interface Leaderboard {
 export interface SiteSettings {
   leaderboard: { range: LeaderRange; size: number; boards: { readers: boolean; players: boolean; schools: boolean }; schoolRanking: 'total' | 'average'; showOnHome: boolean };
   reading: { mode: 'fixed' | 'story'; readSeconds: number; questionSeconds: number; retries: number; readPoints: number; questionPoints: number };
-  home: { heroMax: number; heroSeconds: number };
+  home: { heroMax: number; heroSeconds: number; bigNews?: string[]; fresh?: string[] };
   access: { requireAccessForPoints: boolean };
   personalPlans: PersonalPlan[]; // packages for students who are not with a subscribed school
   schoolPlans: SchoolPlan[];

@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { Inter, Josefin_Sans } from 'next/font/google';
+import { Archivo_Black, Inter, Josefin_Sans } from 'next/font/google';
 import './globals.css';
 import { IconSprite } from '@/components/Icon';
 import { themeInitScript } from '@/components/ThemeToggle';
@@ -9,6 +9,8 @@ import SiteChrome from '@/components/SiteChrome';
 const josefinSans = Josefin_Sans({ weight: ['400', '500', '600', '700'], subsets: ['latin'], variable: '--font-josefin', display: 'swap' });
 // Body text font, same as punchnextgen.com (headings stay Josefin Sans)
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
+// Heavy poster font for the edition-style cards (Start here scroll story)
+const archivoBlack = Archivo_Black({ weight: '400', subsets: ['latin'], variable: '--font-heavy', display: 'swap' });
 
 // Live site address, used to build full links for share previews (WhatsApp, X, Facebook…)
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://punchnextgen.com';
@@ -47,7 +49,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" data-theme="light" suppressHydrationWarning className={`${josefinSans.variable} ${inter.variable}`}>
+    <html lang="en" data-theme="light" suppressHydrationWarning className={`${josefinSans.variable} ${inter.variable} ${archivoBlack.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

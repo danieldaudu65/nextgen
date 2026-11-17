@@ -1,5 +1,6 @@
 import { API_URL, ApiError } from './api';
 import type { SchoolPlan } from './types';
+import { shrinkImage } from './shrinkImage';
 
 // School dashboard API (its own login cookie: "school_token")
 
@@ -55,7 +56,7 @@ export const schoolApi = {
   saveProfile: (p: Partial<SchoolProfile> & { city?: string; state?: string }) => call<{ school: SchoolInfo; message: string }>('/school_dashboard/profile', 'PUT', p),
   uploadLogo: async (file: File) => {
     const form = new FormData();
-    form.append('image', file);
+    form.append('image', await shrinkImage(file));
     const res = await fetch(`${API_URL}/school_dashboard/logo`, { method: 'POST', credentials: 'include', body: form });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.success === false) throw new ApiError(res.status, data.message ?? 'Upload failed');

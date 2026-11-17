@@ -55,8 +55,9 @@ function Card({ s }: { s: SectionCard }) {
 }
 
 type GridText = { kicker?: string; title?: string; sub?: string; emptyTitle?: string; emptyText?: string };
+// limit: show only the first N cards (in a row of 3 when N is 3); more: a link to the rest
 
-export default function EditionGrid({ sections, text = {} }: { sections: SectionCard[]; text?: GridText }) {
+export default function EditionGrid({ sections, text = {}, limit, more }: { sections: SectionCard[]; text?: GridText; limit?: number; more?: { href: string; label: string } }) {
   const {
     kicker = 'From the NextGen team', title = 'Fresh stories', sub = 'Published stories, straight from the newsroom.',
     emptyTitle = 'No published stories yet', emptyText = 'Our editors will share the first story here when it is ready.',
@@ -69,9 +70,9 @@ export default function EditionGrid({ sections, text = {} }: { sections: Section
             <span className="tagbar">{kicker}</span>
             <h2 className="display">{title}</h2>
           </div>
-          {sub && <p className="sub">{sub}</p>}
+          {more && sections.length > (limit ?? Infinity) ? <Link className="sec-more" href={more.href}>{more.label}</Link> : sub && <p className="sub">{sub}</p>}
         </div>
-        {sections.length ? <div className="bento">{sections.map((s) => <Card key={s.key} s={s} />)}</div> : <div className="empty-stories"><b>{emptyTitle}</b><p>{emptyText}</p></div>}
+        {sections.length ? <div className={`bento${limit === 3 ? ' three' : ''}`}>{(limit ? sections.slice(0, limit) : sections).map((s) => <Card key={s.key} s={s} />)}</div> : <div className="empty-stories"><b>{emptyTitle}</b><p>{emptyText}</p></div>}
       </div>
     </section>
   );

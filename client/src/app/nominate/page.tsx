@@ -219,7 +219,7 @@ function NominateForm({ cats, rels }: { cats: string[]; rels: string[] }) {
               <div className="nm-photo">
                 {f.photo ? <img src={f.photo} alt="" /> : <span className="nm-photo-empty">📷</span>}
                 <div>
-                  <b>A photo of the star</b> <small>(optional, JPG/PNG under 3 MB)</small>
+                  <b>A photo of the star</b> <small>(optional, JPG or PNG)</small>
                   <div className="nm-photo-btns">
                     <button type="button" className="btn sm white" onClick={() => fileRef.current?.click()} disabled={upBusy}>{upBusy ? 'Uploading…' : f.photo ? 'Change photo' : 'Upload photo'}</button>
                     {f.photo && <button type="button" className="btn sm white" onClick={() => set('photo', '')}>Remove</button>}

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { PointsProvider } from './PointsProvider';
 import Nav from './Nav';
 import Footer from './Footer';
+import ScrollReveal from './ScrollReveal';
 
 // Public pages get the menu, footer and student session.
 // /admin and /school pages skip them (they have their own shells: app/admin/layout.tsx, app/school/layout.tsx).
@@ -18,6 +19,8 @@ export default function SiteChrome({ children }: { children: ReactNode }) {
       <Nav />
       <main>{children}</main>
       <Footer />
+      {/* sections and cards slide up and fade in as you scroll (whole public site) */}
+      <ScrollReveal path={path} />
     </PointsProvider>
   );
 }

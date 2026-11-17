@@ -808,3 +808,31 @@
 .home-star:hover { transform: scale(1.08); color: var(--fg); }
 .home-star.on { background: var(--yellow); border-color: #0A0A0A; color: #0A0A0A; }
 .home-star.on svg path { fill: currentColor; }
+
+/* ===== Stories → "The Big News on the homepage": 3 spots laid out like the homepage ===== */
+.bnl .card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.bnl-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);grid-template-rows:auto auto;gap:12px;margin-top:12px}
+.bnl-spot{display:flex;flex-direction:column;gap:8px;padding:12px;border:2px solid var(--a-line,rgba(0,0,0,.12));border-radius:14px;background:var(--a-panel,#fff);min-width:0}
+.bnl-spot-0{grid-row:span 2}
+.bnl-spot.empty{border-style:dashed;opacity:.75}
+.bnl-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.bnl-label{font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.bnl-auto{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(255,212,0,.25);color:inherit}
+.bnl-thumb{display:grid;place-items:center;border-radius:10px;overflow:hidden;background:rgba(127,127,127,.12);aspect-ratio:16/9}
+.bnl-spot-0 .bnl-thumb{aspect-ratio:16/10;flex:1}
+.bnl-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.bnl-title{font-size:14px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bnl-spot-0 .bnl-title{font-size:17px}
+.bnl-actions{display:flex;gap:6px;align-items:center}
+.bnl-actions select{flex:1;min-width:0;padding:8px 10px;border-radius:10px;border:1.5px solid var(--a-line,rgba(0,0,0,.2));background:var(--a-panel,#fff);color:inherit;font:inherit;font-size:13px}
+.bnl-move{display:flex;gap:4px}
+.bnl-move .btn{padding:6px 10px}
+.bnl-foot{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:14px}
+@media (max-width:760px){.bnl-grid{grid-template-columns:1fr}.bnl-spot-0{grid-row:auto}}
+/* Fresh stories line-up: 3 equal cards in a row, like on the homepage */
+.bnl-fresh .bnl-grid{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto}
+.bnl-fresh .bnl-spot-0{grid-row:auto}
+.bnl-fresh .bnl-spot-0 .bnl-thumb{aspect-ratio:16/9;flex:none}
+.bnl-fresh .bnl-spot-0 .bnl-title{font-size:14px}
+.bnl-fresh{margin-top:16px}
+@media (max-width:760px){.bnl-fresh .bnl-grid{grid-template-columns:1fr}}

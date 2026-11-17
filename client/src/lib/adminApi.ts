@@ -2,6 +2,7 @@
 import { API_URL, ApiError } from './api';
 import type { Article, Edition, ImageFit, SiteSettings, VocabWord } from './types';
 import type { Category, CategoryIcon } from './categories';
+import { shrinkImage } from './shrinkImage';
 
 export type Role = 'writer' | 'editor' | 'superadmin';
 export type ArticleStatus = 'draft' | 'review' | 'published';
@@ -34,6 +35,14 @@ export interface FormattedStory {
   question?: ArticleQuestion | null;
 }
 
+/** A picture found on a photographed page: which photo, where (fractions 0–1), and what it is for */
+export interface PagePicture { photo: number; box: [number, number, number, number]; caption: string; role: 'cover' | 'profile' | 'inline'; name: string }
+/** What "Snap the pages" returns: the story (same as the formatter) and the design read off the photos */
+export interface ReadPagesResult {
+  story: FormattedStory; source: 'ai' | 'basic'; transcript: string;
+  design: { accent: string | null; accentRaw: string | null; pictures: PagePicture[]; order?: number[]; readBy?: string };
+}
+
 export interface AdminEditionRow {
   slug: string; title?: string; month: string; volume?: string; year?: number; volumeNumber?: 1 | 2 | 3 | 4; issueMonth?: Edition['issueMonth']; status: Edition['status']; cover?: string; stories: number; published: number;
 }
@@ -44,6 +53,9 @@ export interface AdminSchool { id: string; name: string; city?: string; state?: 
 export type AdminCategory = Category & { id: string; active: boolean; stories: number; locked?: boolean; updatedAt?: string };
 export type CategoryInput = { name?: string; desc?: string; accent?: string; icon?: CategoryIcon; sections?: string[]; link?: string; active?: boolean };
 export interface SectionOption { key: string; label: string; stories: number }
+
+/** A published Big News story, for the homepage Big News line-up */
+export interface BigNewsStory { id: string; slug: string; title: string; image?: string | null; sectionLabel: string; pages?: string | null; publishedAt: string | null }
 
 /** A story switched on for the homepage hero, and whether it shows right now */
 export type HeroState = 'live' | 'waiting' | 'no-picture' | 'not-published';
@@ -110,6 +122,11 @@ export const adminApi = {
   deleteArticle: (id: string) => call<{ message: string }>(`/admin_articles/${id}`, 'DELETE'),
   /** The homepage hero line-up (which stories rotate, how many fit) */
   homepageHero: () => call<{ max: number; seconds: number; live: number; articles: HeroRow[] }>('/admin_articles/homepage'),
+  /** The Big News on the homepage: the story for the big card, top right, bottom right ('' = newest) */
+  bigNewsLineup: () => call<{ slots: string[]; stories: BigNewsStory[] }>('/admin_articles/big-news'),
+  saveBigNewsLineup: (slots: string[]) => call<{ message: string; slots: string[] }>('/admin_articles/big-news', 'PUT', { slots }),
+  freshLineup: () => call<{ slots: string[]; stories: BigNewsStory[] }>('/admin_articles/fresh'),
+  saveFreshLineup: (slots: string[]) => call<{ message: string; slots: string[] }>('/admin_articles/fresh', 'PUT', { slots }),
   setHomepage: (id: string, on: boolean) => call<{ message: string; homepageFeatured: boolean }>(`/admin_articles/${id}/homepage`, 'PATCH', { on }),
 
   // categories (homepage "Explore", top menu, /category pages)
@@ -121,6 +138,9 @@ export const adminApi = {
   /** Paste an article, get it back in the NextGen format (nothing is saved) */
   formatArticle: (text: string, edition?: string) =>
     call<{ story: FormattedStory; source: 'ai' | 'basic' }>('/admin_articles/format', 'POST', { text, edition }),
+  /** Photos of a printed article (1–4, in order) → the story in the NextGen format + its design (nothing is saved) */
+  readPages: (pages: ({ data: string; type: string } | { text: string; accent?: string | null; pictures?: { box: [number, number, number, number]; role: string; caption: string }[] })[], edition?: string) =>
+    call<ReadPagesResult>('/admin_articles/read-pages', 'POST', { pages, edition }),
 
   // editions
   editions: () => call<{ editions: AdminEditionRow[] }>('/admin_editions').then((d) => d.editions),
@@ -145,9 +165,9 @@ export const adminApi = {
 
   // uploads
   uploadStatus: () => call<{ storage: 'cloudinary' | 'local' }>('/admin_uploads/status').then((d) => d.storage),
-  uploadImage: (file: File) => {
+  uploadImage: async (file: File) => {
     const form = new FormData();
-    form.append('image', file);
+    form.append('image', await shrinkImage(file));
     return call<{ url: string }>('/admin_uploads/image', 'POST', form).then((d) => d.url);
   },
 };
